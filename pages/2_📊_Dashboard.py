@@ -4,11 +4,9 @@ import pandas as pd
 import altair as alt
 import numpy as np
 from utils.app_session import AppSession
-from utils.ui import add_header_with_slider, inject_page_styles, load_validate_df, time_filter_controls
+from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
-
-_ORDER = ["bullet", "blitz", "rapid", "daily", "classical"]
 
 def _kpi(df:pd.DataFrame):
     # KPIs
@@ -39,32 +37,22 @@ def _render_viz(df: pd.DataFrame):
     
     _kpi(df)
 
-def _order_classes(classes):
-    lower = [c.lower() if isinstance(c, str) else "unknown" for c in classes]
-    seen = set()
-    ordered = [c for c in _ORDER if c in lower and not (c in seen or seen.add(c))]
-    rest = [c for c in lower if c not in seen]
-    return ordered + sorted(rest)
+
 
 inject_page_styles()
 
 df = load_validate_df()
+df = add_header_with_slider(df, "Dashboard")
 
-total_n = len(df)
-class_counts = df["time_class"].fillna("unknown").str.lower().value_counts()
-classes = _order_classes(class_counts.index.tolist())
-top_labels = [f"All ({total_n})"] + [f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes]
-
-# --- Layout
-df_range = add_header_with_slider(df, "Dashboard")
-
+#--- Layout
+top_labels, classes = get_time_control_tabs(df)
 top_tabs = st.tabs(top_labels)
 with top_tabs[0]:
-    _render_viz(df_range)
+    _render_viz(df)
 
 for i, cls in enumerate(classes, start=1):
     with top_tabs[i]:
-        scope = df_range[df_range["time_class"].str.lower().fillna("unknown") == cls]
+        scope = df[df["time_class"].str.lower().fillna("unknown") == cls]
         if scope.empty:
             st.info("No games in this class.")
             continue

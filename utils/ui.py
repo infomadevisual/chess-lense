@@ -1,3 +1,4 @@
+from typing import Tuple
 import pandas as pd
 import streamlit as st
 
@@ -96,3 +97,18 @@ def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
     end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
     t = pd.to_datetime(df_scope["end_time"], errors="coerce", utc=True)
     return df_scope[(t >= start_ts) & (t < end_ts)].copy()
+
+def _order_classes(classes):
+    order = ["bullet", "blitz", "rapid", "daily", "classical"]
+    lower = [c.lower() if isinstance(c, str) else "unknown" for c in classes]
+    seen = set()
+    ordered = [c for c in order if c in lower and not (c in seen or seen.add(c))]
+    rest = [c for c in lower if c not in seen]
+    return ordered + sorted(rest)
+
+def get_time_control_tabs(df: pd.DataFrame) -> Tuple[list[str], list[str]]:
+    total_n = len(df)
+    class_counts = df["time_class"].fillna("unknown").str.lower().value_counts()
+    classes = _order_classes(class_counts.index.tolist())
+    top_labels = [f"All ({total_n})"] + [f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes]
+    return (top_labels, classes)
