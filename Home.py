@@ -11,7 +11,7 @@ session = AppSession.from_streamlit()
 if Config.debug == True and Config.load_user != None:
     downloader = ChesscomDownloader(timeout=20.0, sleep_sec=0.2)
     session.username = Config.load_user
-    session.games_df = downloader.load_from_cache(Config.load_user)
+    session.games_df = downloader.load_from_cache(Config.load_user,st.context.timezone)
     session.persist()
 
 # Global Styling

@@ -19,30 +19,32 @@ def _perspective_cols(df: pd.DataFrame) -> pd.DataFrame:
     out["opp_rating"] = pd.to_numeric(out["opponent_rating"], errors="coerce")
     out["my_rating"]  = pd.to_numeric(out["user_rating"], errors="coerce")
 
-    # Ergebnis aus Usersicht
-    ur = out["user_result"].fillna("").str.lower()
-    vr = out["opponent_result"].fillna("").str.lower()
-
-    win  = ur.eq("win")
-    loss = vr.eq("win")
-    draw = ur.isin(DRAW_CODES) | vr.isin(DRAW_CODES) | (~win & ~loss & (ur.ne("") | vr.ne("")))
-
-    out["result_me"] = np.where(win, "win",
-                         np.where(draw, "draw",
-                           np.where(loss, "loss", "other")))
-
     # Monats-Bucket
     if "end_time" in out.columns:
         out["month"] = pd.to_datetime(out["end_time"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 
     return out
 
-def _kpi(win_rate: float, n: int, avg_opp: float, rated_delta: float):
-    c1,c2,c3,c4 = st.columns(4)
-    c1.metric("Games", n)
+def _kpi(df:pd.DataFrame):
+    # KPIs
+    total = len(df)
+    win_rate = (df["user_result_simple"] == "win").sum() / total if total else 0.0
+    draw_rate = (df["user_result_simple"] == "draw").sum() / total if total else 0.0
+    loss_rate = (df["user_result_simple"] == "loss").sum() / total if total else 0.0
+    
+    avg_opp = df["opponent_rating"].mean()
+
+    # simple rated delta: last minus first by end_time within rated games
+    rated = df[df["rated"] == True].sort_values("end_time")
+    rated_delta = (rated["user_rating"].iloc[-1] - rated["user_rating"].iloc[0]) if len(rated) >= 2 else 0
+
+    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    c1.metric("Games", len(df))
     c2.metric("Win-rate", f"{win_rate:.0%}")
-    c3.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—")
-    c4.metric("Rating Improvement", f"{rated_delta:+.0f}")
+    c3.metric("Draw-rate", f"{draw_rate:.0%}")
+    c4.metric("Loss-rate", f"{loss_rate:.0%}")
+    c5.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—")
+    c6.metric("Rating Improvement", f"{rated_delta:+.0f}")
 
 def _render_viz(df: pd.DataFrame):
     st.caption(f"{len(df)} games")
@@ -50,18 +52,7 @@ def _render_viz(df: pd.DataFrame):
         st.info("No games for this selection.")
         return
     
-    dfp = _perspective_cols(df)
-    dfp = dfp.dropna(subset=["end_time"])
-    # KPIs
-    wins = (dfp["result_me"] == "win").sum()
-    draws = (dfp["result_me"] == "draw").sum()
-    total = len(dfp)
-    win_rate = wins / total if total else 0.0
-    avg_opp = dfp["opp_rating"].mean()
-    # simple rated delta: last minus first by end_time within rated games
-    rated = dfp[dfp["rated"] == True].sort_values("end_time")
-    rated_delta = (rated["my_rating"].iloc[-1] - rated["my_rating"].iloc[0]) if len(rated) >= 2 else 0
-    _kpi(win_rate, total, avg_opp, rated_delta)
+    _kpi(df)
 
 def _order_classes(classes):
     lower = [c.lower() if isinstance(c, str) else "unknown" for c in classes]
@@ -103,28 +94,23 @@ with hdr_left:
 
 with hdr_right:
     # derive available months from end_time
-    s = pd.to_datetime(df["end_time"], utc=True, errors="coerce").dropna()
-    if s.empty:
-        labels = ["All"]
-        start_lbl, end_lbl = "All", "All"
-        df_range = df.copy()
-    else:
-        min_p, max_p = s.min().to_period("M"), s.max().to_period("M")
-        months = []
-        cur = min_p
-        while cur <= max_p:
-            months.append(cur)
-            cur += 1
-        labels = [p.strftime("%Y-%m") for p in months]
-        start_lbl, end_lbl = st.select_slider(
-            "Range", options=labels, value=(labels[0], labels[-1]),
-            key="month_slider", label_visibility="collapsed",
-        )
-        start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
-        start_ts = start_p.to_timestamp("start").tz_localize("UTC")
-        end_ts   = (end_p + 1).to_timestamp("start").tz_localize("UTC")
-        t = pd.to_datetime(df["end_time"], errors="coerce", utc=True)
-        df_range = df[(t >= start_ts) & (t < end_ts)].copy()
+    s = pd.to_datetime(df["end_time_local"], errors="coerce")
+    min_p, max_p = s.min().to_period("M"), s.max().to_period("M")
+    months = []
+    cur = min_p
+    while cur <= max_p:
+        months.append(cur)
+        cur += 1
+    labels = [p.strftime("%Y-%m") for p in months]
+    start_lbl, end_lbl = st.select_slider(
+        "Range", options=labels, value=(labels[0], labels[-1]),
+        key="month_slider", label_visibility="collapsed",
+    )
+    start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
+    start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
+    end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
+    t = pd.to_datetime(df["end_time"], errors="coerce", utc=True)
+    df_range = df[(t >= start_ts) & (t < end_ts)].copy()
 
 top_tabs = st.tabs(top_labels)
 with top_tabs[0]:

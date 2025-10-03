@@ -76,9 +76,9 @@ if submit:
             prog.progress(frac, text=f"{i}/{total} months loaded")
 
         if not Config.debug:
-            df = downloader.download_all(session.username, progress_cb=update_progress)
+            df = downloader.download_all(session.username, st.context.timezone, progress_cb=update_progress)
         else:
-            df = downloader.load_from_cache(session.username, progress_cb=update_progress)
+            df = downloader.load_from_cache(session.username,st.context.timezone, progress_cb=update_progress)
 
     prog.empty()
 
@@ -97,16 +97,6 @@ if session.game_count > 0:
     with st.expander("Summary", expanded=True):
         st.write(f"User: **{session.username}** | Games: **{session.game_count}**")
         df = session.games_df
-
-        # Convert to TZ
-        df["end_time_local"] = df["end_time"].dt.tz_convert(st.context.timezone)
-
-        # --- derive extra columns ---
-        df["year"] = df["end_time_local"].dt.year
-        df["month"] = df["end_time_local"].dt.month          # 1–12
-        df["month_name"] = df["end_time_local"].dt.strftime("%B")
-        df["weekday"] = df["end_time_local"].dt.dayofweek    # 0=Mon .. 6=Sun
-        df["weekday_name"] = df["end_time_local"].dt.strftime("%A")
 
         cols = [
             "end_time_local","username","opponent_username",

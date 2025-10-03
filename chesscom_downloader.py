@@ -28,7 +28,7 @@ class ChesscomDownloader:
         self.cache_root.mkdir(parents=True, exist_ok=True)
 
     # ---------- public ----------
-    def load_from_cache(self, username: str, progress_cb=None) -> pd.DataFrame:
+    def load_from_cache(self, username: str, timezone:str|None, progress_cb=None) -> pd.DataFrame:
         u = username.strip().lower()
         cdir = self._ensure_user_dir(u)
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
@@ -36,9 +36,19 @@ class ChesscomDownloader:
         if df_existing is None:
             return pd.DataFrame()
 
+        # Convert to TZ
+        df_existing["end_time_local"] = df_existing["end_time"].dt.tz_convert(timezone)
+
+        # --- derive extra columns ---
+        df_existing["year"] = df_existing["end_time_local"].dt.year
+        df_existing["month"] = df_existing["end_time_local"].dt.month          # 1–12
+        df_existing["month_name"] = df_existing["end_time_local"].dt.strftime("%B")
+        df_existing["weekday"] = df_existing["end_time_local"].dt.dayofweek    # 0=Mon .. 6=Sun
+        df_existing["weekday_name"] = df_existing["end_time_local"].dt.strftime("%A")
+
         return df_existing
 
-    def download_all(self, username: str, progress_cb=None) -> pd.DataFrame:
+    def download_all(self, username: str, timezone:str|None, progress_cb=None) -> pd.DataFrame:
         cdir = self._ensure_user_dir(username)
         idx = self._load_index(cdir)
 
@@ -95,6 +105,15 @@ class ChesscomDownloader:
                 # Optional: Dedupe via game_url
                 if "game_url" in df_final.columns:
                     df_final = df_final.sort_values("end_time").drop_duplicates("game_url", keep="last")
+
+        # Convert to TZ
+        df_final["end_time_local"] = df_final["end_time"].dt.tz_convert(timezone)
+
+        # --- derive extra columns ---
+        df_final["year"] = df_final["end_time_local"].dt.year
+        df_final["month"] = df_final["end_time_local"].dt.month          # 1–12
+        df_final["weekday"] = df_final["end_time_local"].dt.dayofweek    # 0=Mon .. 6=Sun
+        df_final["weekday_name"] = df_final["end_time_local"].dt.strftime("%A")
 
         # 5) Persist Parquet
         dfp = cdir / "games.parquet"
