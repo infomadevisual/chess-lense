@@ -7,7 +7,7 @@ from typing import Optional, List
 
 import pandas as pd
 import requests
-from models import CacheNode, GameModel, GameRow, IndexModel, MonthArchive, ProfileModel, StatsModel
+from utils.models import CacheNode, GameModel, GameRow, IndexModel, MonthArchive, ProfileModel, StatsModel
 
 logger = logging.getLogger("chesscom")
 

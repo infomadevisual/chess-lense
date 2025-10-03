@@ -1,9 +1,9 @@
 import logging
 import streamlit as st
 
-from chesscom_downloader import ChesscomDownloader
-from config import Config
-from app_session import AppSession
+from utils.chesscom_downloader import ChesscomDownloader
+from utils.config import Config
+from utils.app_session import AppSession
 
 session = AppSession.from_streamlit()
 

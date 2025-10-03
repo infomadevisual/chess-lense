@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import numpy as np
-from app_session import AppSession
+from utils.app_session import AppSession
 from ui import inject_page_styles, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
