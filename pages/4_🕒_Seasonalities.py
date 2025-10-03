@@ -4,7 +4,7 @@ from utils.app_session import AppSession
 from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls 
 import altair as alt
 
-st.set_page_config(page_title="Temporal Analysis", page_icon="🕒", layout="wide")
+st.set_page_config(page_title="Seasonality Analysis", page_icon="🕒", layout="wide")
 inject_page_styles()
 
 def _render_viz(df:pd.DataFrame):
@@ -126,7 +126,7 @@ def _render_viz(df:pd.DataFrame):
 
 # ---- Load Data and Apply filters ----
 df = load_validate_df()
-df = add_header_with_slider(df, "Temporal Analysis")
+df = add_header_with_slider(df, "🕒 Seasonality Analysis")
 
 #--- Layout
 top_labels, classes = get_time_control_tabs(df)

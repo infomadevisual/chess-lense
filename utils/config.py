@@ -3,4 +3,4 @@ class Config():
     debug :bool = True
 
     # loads a user's data on startup
-    load_user:str | None = "joeshift"
+    load_user:str | None = "hikaru"
