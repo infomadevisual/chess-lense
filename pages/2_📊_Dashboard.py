@@ -46,39 +46,74 @@ def _render_viz(df: pd.DataFrame):
 
 def run():
     inject_page_styles()
+    st.markdown("""
+    <style>
+    div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) {
+        padding-top: 3rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
-    st.title("Dashboard")
 
     session = AppSession.from_streamlit()
-    if not session.has_data:
-        st.warning("No games loaded. Go to Home and load your games first.")
-        return
-
     df = session.games_df
     if df is None or df.empty:
         st.warning("No games loaded. Go to Home and load your games first.")
         return
-    df = df.copy()
-
-    for c in ["time_class", "time_control"]:
-        if c not in df.columns:
-            df[c] = None
 
     total_n = len(df)
     class_counts = df["time_class"].fillna("unknown").str.lower().value_counts()
     classes = _order_classes(class_counts.index.tolist())
 
     top_labels = [f"All ({total_n})"] + [f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes]
+    
+    # --- Layout
+    hdr_left, hdr_right = st.columns([1, 2])
+
+    with hdr_left:
+        st.header("Dashboard")
+
+    with hdr_right:
+            # derive available months from end_time
+        s = pd.to_datetime(df["end_time"], utc=True, errors="coerce").dropna()
+        if s.empty:
+            df_range = df.copy()
+        else:
+            min_p = s.min().to_period("M")
+            max_p = s.max().to_period("M")
+
+            # build labels YYYY-MM
+            months = []
+            cur = min_p
+            while cur <= max_p:
+                months.append(cur)
+                cur += 1
+            labels = [p.strftime("%Y-%m") for p in months]
+
+        start_lbl, end_lbl = st.select_slider(
+            "Range",
+            options=labels,
+            value=(labels[0], labels[-1]),
+            key="month_slider",
+            label_visibility="collapsed",
+        )
+
+    # compute filtered df once
+    start_p = pd.Period(start_lbl, freq="M")
+    end_p   = pd.Period(end_lbl, freq="M")
+    start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
+    end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
+    t = pd.to_datetime(df["end_time"], errors="coerce", utc=True)
+    df_range = df[(t >= start_ts) & (t < end_ts)].copy()
+
     top_tabs = st.tabs(top_labels)
-
-    # All: no time checkboxes
     with top_tabs[0]:
-        _render_viz(df)
+        _render_viz(df_range)
 
-    # Per class: time checkboxes default all selected
     for i, cls in enumerate(classes, start=1):
         with top_tabs[i]:
-            scope = df[df["time_class"].str.lower().fillna("unknown") == cls]
+            scope = df_range[df_range["time_class"].str.lower().fillna("unknown") == cls]
             if scope.empty:
                 st.info("No games in this class.")
                 continue

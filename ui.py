@@ -27,22 +27,13 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
 
     options = [f"{lbl} ({counts_map[lbl]})" for lbl in labels]
     default = options  # select all
-
-    if hasattr(st, "pills"):
-        selected_opts = st.pills(
+    selected_opts = st.pills(
             label="Time controls",
             options=options,
             selection_mode="multi",
             default=default,
             key=f"{key_prefix}_pills",
-        )
-    else:
-        selected_opts = st.multiselect(
-            label="Time controls",
-            options=options,
-            default=default,
             label_visibility="collapsed",
-            key=f"{key_prefix}_ms",
         )
 
     selected_labels = [s.split(" (", 1)[0] for s in selected_opts]
