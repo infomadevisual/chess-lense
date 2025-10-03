@@ -7,7 +7,9 @@ def inject_page_styles():
         """
         <style>
             .block-container {
-                padding: 2rem !important;
+                padding-top: 2.5rem !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
             }
             .stApp {
                 padding: 0 !important;

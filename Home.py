@@ -45,7 +45,8 @@ st.markdown(
 Welcome to **chess.com Analyzer** — your personal dashboard for deep insights into your chess.com games.  
 Here you can:
 - 📥 Load your full game history directly from chess.com
-- 📊 Explore your **openings, strengths, and weaknesses**  
+- 📊 Explore your general performance
+- 🕒 Temporal_Analysis shows you when you perform the best and the worst
 - 🔍 Compare your play against **other players**  
 - 👑 Discover how top grandmasters approach the same positions  
 

@@ -4,26 +4,11 @@ import pandas as pd
 import altair as alt
 import numpy as np
 from utils.app_session import AppSession
-from ui import inject_page_styles, time_filter_controls
+from utils.ui import inject_page_styles, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
 
 _ORDER = ["bullet", "blitz", "rapid", "daily", "classical"]
-DRAW_CODES = {"stalemate","agreed","repetition","insufficient","threecheck","50move","timevsinsufficient","abandoned"}  # be liberal
-
-def _perspective_cols(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-
-    # Farbe, Ratings aus den bereits perspektivischen Spalten
-    out["me_color"]   = out["user_played_as"].fillna("unknown").str.lower()
-    out["opp_rating"] = pd.to_numeric(out["opponent_rating"], errors="coerce")
-    out["my_rating"]  = pd.to_numeric(out["user_rating"], errors="coerce")
-
-    # Monats-Bucket
-    if "end_time" in out.columns:
-        out["month"] = pd.to_datetime(out["end_time"], errors="coerce").dt.to_period("M").dt.to_timestamp()
-
-    return out
 
 def _kpi(df:pd.DataFrame):
     # KPIs

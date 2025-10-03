@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, available_timezones  # Python 3.9+
 from utils.chesscom_downloader import ChesscomDownloader
 from utils.config import Config
 from utils.app_session import AppSession
-from ui import inject_page_styles
+from utils.ui import inject_page_styles
 import pytz
 from streamlit_javascript import st_javascript
 from streamlit_tz import streamlit_tz
