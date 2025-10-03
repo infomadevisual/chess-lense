@@ -5,6 +5,8 @@ name = "pypi"
 
 [packages]
 pydantic = "*"
+pytz = "*"
+streamlit-javascript = "*"
 
 [dev-packages]
 notebook = "*"

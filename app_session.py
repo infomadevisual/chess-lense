@@ -1,4 +1,5 @@
 from __future__ import annotations
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -7,7 +8,6 @@ from typing import Any, ClassVar, Optional
 
 KEY_USERNAME = "cc_username"
 KEY_DF = "games_df"
-
 # Centralized keys
 class AppSession(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # allow pandas objects
@@ -23,7 +23,7 @@ class AppSession(BaseModel):
     def from_streamlit(cls) -> "AppSession":
         return cls(
             username=st.session_state.get(KEY_USERNAME),
-            games_df=st.session_state.get(KEY_DF, pd.DataFrame()),
+            games_df=st.session_state.get(KEY_DF, pd.DataFrame())
         )
 
     def persist(self) -> None:

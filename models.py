@@ -80,6 +80,7 @@ class GameRow(BaseModel):
     rules: Optional[str] = None
     time_class: Optional[str] = None
     time_control: Optional[str] = None
+    time_label: Optional[str] = None
     initial_setup_fen: Optional[str] = None
     game_url: Optional[str] = None
     pgn_url: Optional[str] = None
@@ -121,6 +122,7 @@ class GameRow(BaseModel):
             rules=g.rules,
             time_class=g.time_class,
             time_control=g.time_control,
+            time_label=GameRow.format_time_label(g.time_control),
             initial_setup_fen=g.initial_setup,
             game_url=g.url,
             eco_url=g.eco,
@@ -140,3 +142,37 @@ class GameRow(BaseModel):
         if result in ["checkmated", "resigned", "timeout", "abandoned", "lose"]:
             return "loss"
         return None  # fallback if chess.com adds new codes
+    
+    @staticmethod
+    def format_time_label(time_control: str | None) -> str | None:
+        if not time_control:
+            return None
+
+        if "/" in time_control:
+            return "daily"
+
+        # handle purely numeric cases like "180"
+        if time_control.isdigit():
+            total = int(time_control)
+            mins, secs = divmod(total, 60)
+            if secs == 0:
+                return f"{mins}m"
+            return f"{mins}m {secs}s" if mins else f"{secs}s"
+
+        # handle standard formats like "600+5"
+        # we only care about the base time
+        base, *rest = time_control.split("+")
+        if base.isdigit():
+            total = int(base)
+            mins, secs = divmod(total, 60)
+            if secs == 0:
+                label = f"{mins}m"
+            else:
+                label = f"{mins}m {secs}s" if mins else f"{secs}s"
+            if rest and rest[0].isdigit():
+                inc = int(rest[0])
+                if inc > 0:
+                    label += f"+{inc}s"
+            return label
+
+        return time_control  # fallback
