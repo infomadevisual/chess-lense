@@ -4,7 +4,7 @@ import pandas as pd
 import altair as alt
 import numpy as np
 from utils.app_session import AppSession
-from utils.ui import add_year_slider, inject_page_styles, time_filter_controls
+from utils.ui import add_header_with_slider, inject_page_styles, load_validate_df, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
 
@@ -47,38 +47,16 @@ def _order_classes(classes):
     return ordered + sorted(rest)
 
 inject_page_styles()
-st.markdown("""
-<style>
-div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) {
-    padding-top: 3rem;
-}
-</style>
-""", unsafe_allow_html=True)
 
-session = AppSession.from_streamlit()
-df = session.games_df
-if df is None or df.empty:
-    st.warning("No games loaded. Go to Home and load your games first.")
-    st.stop()
-
-if session.username is None:
-    st.error("No user loaded. Go to Home and load your games first.")
-    st.stop()
+df = load_validate_df()
 
 total_n = len(df)
 class_counts = df["time_class"].fillna("unknown").str.lower().value_counts()
 classes = _order_classes(class_counts.index.tolist())
-
 top_labels = [f"All ({total_n})"] + [f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes]
 
 # --- Layout
-hdr_left, hdr_right = st.columns([1, 2])
-
-with hdr_left:
-    st.header("Dashboard")
-
-with hdr_right:
-    df_range = add_year_slider(df)
+df_range = add_header_with_slider(df, "Dashboard")
 
 top_tabs = st.tabs(top_labels)
 with top_tabs[0]:

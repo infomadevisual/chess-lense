@@ -1,6 +1,21 @@
 import pandas as pd
 import streamlit as st
 
+from utils.app_session import AppSession
+
+
+def load_validate_df() -> pd.DataFrame:
+    session = AppSession.from_streamlit()
+    df = session.games_df
+    if df is None or df.empty:
+        st.warning("No games loaded. Go to Home and load your games first.")
+        st.stop()
+
+    if session.username is None:
+        st.error("No user loaded. Go to Home and load your games first.")
+        st.stop()
+
+    return df.copy()
 
 def inject_page_styles():
     st.markdown(
@@ -8,8 +23,8 @@ def inject_page_styles():
         <style>
             .block-container {
                 padding-top: 2.5rem !important;
-                padding-left: 1rem !important;
-                padding-right: 1rem !important;
+                padding-left: 2rem !important;
+                padding-right: 2rem !important;
             }
             .stApp {
                 padding: 0 !important;
@@ -46,7 +61,15 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
     mask = df_scope["time_label"].astype(str).isin(selected_labels)
     return df_scope[mask]
 
-def add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
+def add_header_with_slider(df_scope: pd.DataFrame, header_title:str) -> pd.DataFrame:
+    hdr_left, hdr_right = st.columns([1, 1])
+    with hdr_left:
+        st.header(header_title)
+
+    with hdr_right:
+        return _add_year_slider(df_scope)
+
+def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
     st.markdown("""
     <style>
     div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) {
