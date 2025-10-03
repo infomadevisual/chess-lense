@@ -4,7 +4,7 @@ import pandas as pd
 import altair as alt
 import numpy as np
 from utils.app_session import AppSession
-from utils.ui import inject_page_styles, time_filter_controls
+from utils.ui import add_year_slider, inject_page_styles, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
 
@@ -78,24 +78,7 @@ with hdr_left:
     st.header("Dashboard")
 
 with hdr_right:
-    # derive available months from end_time
-    s = pd.to_datetime(df["end_time_local"], errors="coerce")
-    min_p, max_p = s.min().to_period("M"), s.max().to_period("M")
-    months = []
-    cur = min_p
-    while cur <= max_p:
-        months.append(cur)
-        cur += 1
-    labels = [p.strftime("%Y-%m") for p in months]
-    start_lbl, end_lbl = st.select_slider(
-        "Range", options=labels, value=(labels[0], labels[-1]),
-        key="month_slider", label_visibility="collapsed",
-    )
-    start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
-    start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
-    end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
-    t = pd.to_datetime(df["end_time"], errors="coerce", utc=True)
-    df_range = df[(t >= start_ts) & (t < end_ts)].copy()
+    df_range = add_year_slider(df)
 
 top_tabs = st.tabs(top_labels)
 with top_tabs[0]:

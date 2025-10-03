@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 from utils.app_session import AppSession
-from utils.ui import inject_page_styles, time_filter_controls 
+from utils.ui import add_year_slider, inject_page_styles, time_filter_controls 
 import altair as alt
 
 st.set_page_config(page_title="Temporal Analysis", page_icon="🕒", layout="wide")
-st.header("Temporal Analysis")
 inject_page_styles()
 
 session = AppSession.from_streamlit()
@@ -16,30 +15,33 @@ if session.game_count == 0:
 df = session.games_df.copy()
 
 # ---- Apply filters ----
+hdr_left, hdr_right = st.columns([1, 2])
+with hdr_left:
+    st.header("Temporal Analysis")
+
+with hdr_right:
+    df_range = add_year_slider(df)
+
 df = time_filter_controls(df, key_prefix="temporal")
 
-if df.empty:
-    st.info("No games match filters.")
-    st.stop()
-
 # ---- Add temporal columns ----
-df["year"] = df["end_time_local"].dt.year
-df["month"] = df["end_time_local"].dt.month
-df["weekday"] = df["end_time_local"].dt.day_name()
-df["hour"] = df["end_time_local"].dt.hour
+df_range["year"] = df_range["end_time_local"].dt.year
+df_range["month"] = df_range["end_time_local"].dt.month
+df_range["weekday"] = df_range["end_time_local"].dt.day_name()
+df_range["hour"] = df_range["end_time_local"].dt.hour
 
 # ---- Aggregations ----
 tabs = st.tabs(["By Hour", "By Weekday", "By Month", "By Year"])
 
 with tabs[0]:
     tmp = (
-        df.groupby("hour")["user_result_simple"]
+        df_range.groupby("hour")["user_result_simple"]
         .value_counts(normalize=True)
         .rename("share")
         .reset_index()
     )
 
-    counts = df.groupby("hour").size().rename("n").reset_index()
+    counts = df_range.groupby("hour").size().rename("n").reset_index()
     tmp = tmp.merge(counts, on="hour", how="left")
     tmp["label"] = tmp["hour"].astype(str) + " (" + tmp["n"].astype(str) + ")"
 
@@ -62,7 +64,7 @@ with tabs[1]:
     order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
     weekday_long = (
-        df.groupby("weekday")["user_result_simple"]
+        df_range.groupby("weekday")["user_result_simple"]
         .value_counts(normalize=True)
         .rename("share")
         .reset_index()
@@ -73,7 +75,7 @@ with tabs[1]:
     weekday_long = weekday_long.sort_values("weekday")
 
     # add counts per weekday
-    counts = df.groupby("weekday").size().rename("n").reset_index()
+    counts = df_range.groupby("weekday").size().rename("n").reset_index()
     weekday_long = weekday_long.merge(counts, on="weekday", how="left")
 
     # build x labels and percentage
@@ -94,13 +96,13 @@ with tabs[1]:
 
 with tabs[2]:
     tmp = (
-        df.groupby("month")["user_result_simple"]
+        df_range.groupby("month")["user_result_simple"]
         .value_counts(normalize=True)
         .rename("share")
         .reset_index()
     )
 
-    counts = df.groupby("month").size().rename("n").reset_index()
+    counts = df_range.groupby("month").size().rename("n").reset_index()
     tmp = tmp.merge(counts, on="month", how="left")
     tmp["label"] = tmp["month"].astype(str) + " (" + tmp["n"].astype(str) + ")"
 
@@ -121,13 +123,13 @@ with tabs[2]:
     
 with tabs[3]:
     tmp = (
-        df.groupby("year")["user_result_simple"]
+        df_range.groupby("year")["user_result_simple"]
         .value_counts(normalize=True)
         .rename("share")
         .reset_index()
     )
 
-    counts = df.groupby("year").size().rename("n").reset_index()
+    counts = df_range.groupby("year").size().rename("n").reset_index()
     tmp = tmp.merge(counts, on="year", how="left")
     tmp["label"] = tmp["year"].astype(str) + " (" + tmp["n"].astype(str) + ")"
 

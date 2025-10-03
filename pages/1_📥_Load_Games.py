@@ -1,17 +1,11 @@
 # Home / Load page
 
 import logging
-import pandas as pd
 import streamlit as st
-from zoneinfo import ZoneInfo, available_timezones  # Python 3.9+
 from utils.chesscom_downloader import ChesscomDownloader
 from utils.config import Config
 from utils.app_session import AppSession
 from utils.ui import inject_page_styles
-import pytz
-from streamlit_javascript import st_javascript
-from streamlit_tz import streamlit_tz
-import streamlit.components.v1 as components
 
 
 # ---------- Page config must be first ----------

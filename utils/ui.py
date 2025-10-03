@@ -45,3 +45,31 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
 
     mask = df_scope["time_label"].astype(str).isin(selected_labels)
     return df_scope[mask]
+
+def add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
+    st.markdown("""
+    <style>
+    div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) {
+        padding-top: 3rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # derive available months from end_time
+    s = pd.to_datetime(df_scope["end_time_local"], errors="coerce")
+    min_p, max_p = s.min().to_period("M"), s.max().to_period("M")
+    months = []
+    cur = min_p
+    while cur <= max_p:
+        months.append(cur)
+        cur += 1
+    labels = [p.strftime("%Y-%m") for p in months]
+    start_lbl, end_lbl = st.select_slider(
+        "Range", options=labels, value=(labels[0], labels[-1]),
+        key="month_slider", label_visibility="collapsed",
+    )
+    start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
+    start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
+    end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
+    t = pd.to_datetime(df_scope["end_time"], errors="coerce", utc=True)
+    return df_scope[(t >= start_ts) & (t < end_ts)].copy()
