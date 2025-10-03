@@ -143,9 +143,3 @@ class GameRow(BaseModel):
             opening=g.opening,
             termination=g.termination,
         )
-
-# ---------- Meta for UI ----------
-class MetaModel(BaseModel):
-    username: str
-    games_count: int = 0
-    parquet_path: Optional[str] = None

@@ -3,12 +3,11 @@ from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
-from typing import Callable, Optional, Tuple, List
+from typing import Optional, List
 
 import pandas as pd
 import requests
-from models import CacheNode, GameModel, GameRow, IndexModel, MetaModel, MonthArchive, ProfileModel, StatsModel
-from pydantic import TypeAdapter
+from models import CacheNode, GameModel, GameRow, IndexModel, MonthArchive, ProfileModel, StatsModel
 
 logger = logging.getLogger("chesscom")
 
@@ -29,16 +28,13 @@ class ChesscomDownloader:
         self.cache_root.mkdir(parents=True, exist_ok=True)
 
     # ---------- public ----------
-    def load_from_cache(self, username: str, progress_cb=None) -> tuple[pd.DataFrame, MetaModel]:
+    def load_from_cache(self, username: str, progress_cb=None) -> pd.DataFrame:
         u = username.strip().lower()
         cdir = self._ensure_user_dir(u)
-        idx = self._load_index(cdir)
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
-        months_in_parquet = self._months_in_df(df_existing) if df_existing is not None else set()
-        meta = MetaModel(username=u)
-        return (df_existing if df_existing is not None else pd.DataFrame()), meta
+        return df_existing if df_existing is not None else pd.DataFrame()
 
-    def download_all(self, username: str, progress_cb=None) -> tuple[pd.DataFrame, MetaModel]:
+    def download_all(self, username: str, progress_cb=None) -> pd.DataFrame:
         u = username.strip().lower()
         cdir = self._ensure_user_dir(u)
         idx = self._load_index(cdir)
@@ -48,7 +44,6 @@ class ChesscomDownloader:
         self.fetch_stats(u, cdir, idx)
 
         archives = self.list_archives(u)
-        meta = MetaModel(username=u)
 
         # 1) Load parquet
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
@@ -102,11 +97,9 @@ class ChesscomDownloader:
         dfp = cdir / "games.parquet"
         if df_final is not None and not df_final.empty:
             df_final.to_parquet(dfp, index=False)
-            meta.parquet_path = str(dfp)
-        meta.games_count = 0 if df_final is None else int(len(df_final))
 
         self._save_index(cdir, idx)
-        return (df_final if df_final is not None else pd.DataFrame()), meta
+        return df_final if df_final is not None else pd.DataFrame()
 
     def fetch_profile(self, username: str, cache_dir: Path, idx: IndexModel) -> Optional[ProfileModel]:
         url = f"https://api.chess.com/pub/player/{username}"

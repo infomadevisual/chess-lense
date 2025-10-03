@@ -6,7 +6,7 @@
       "type": "python",
       "request": "launch",
       "module": "streamlit",
-      "args": ["run", "app.py"],
+      "args": ["run", "Home.py"],
       "cwd": "${workspaceFolder}"
     }
   ]
