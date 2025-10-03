@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 
 from lib.app_session import AppSession
-from ui import inject_page_styles
+from ui import inject_page_styles, time_filter_controls
 
 _ORDER = ["bullet", "blitz", "rapid", "daily", "classical"]
 
@@ -43,40 +43,6 @@ def _render_viz(df: pd.DataFrame):
     show_cols = [c for c in ["game_url","time_class","time_control","opening","eco","rated","end_time"] if c in df.columns]
     st.dataframe(df[show_cols].head(50), width="stretch")
 
-def _time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
-    # counts sorted desc by default
-    s = df_scope["time_label"].astype("string")
-    counts = s.value_counts()
-    labels: list[str] = [str(x) for x in counts.index.tolist()]
-    counts_map: dict[str, int] = {str(k): int(v) for k, v in counts.items()}
-
-    options = [f"{lbl} ({counts_map[lbl]})" for lbl in labels]
-    default = options  # select all
-
-    if hasattr(st, "pills"):
-        selected_opts = st.pills(
-            label="Time controls",
-            options=options,
-            selection_mode="multi",
-            default=default,
-            key=f"{key_prefix}_pills",
-        )
-    else:
-        selected_opts = st.multiselect(
-            label="Time controls",
-            options=options,
-            default=default,
-            label_visibility="collapsed",
-            key=f"{key_prefix}_ms",
-        )
-
-    selected_labels = [s.split(" (", 1)[0] for s in selected_opts]
-
-    if not selected_labels:
-        return df_scope.iloc[0:0]
-
-    mask = df_scope["time_label"].astype(str).isin(selected_labels)
-    return df_scope[mask]
 
 def run():
     inject_page_styles()
@@ -116,7 +82,7 @@ def run():
             if scope.empty:
                 st.info("No games in this class.")
                 continue
-            filtered = _time_filter_controls(scope, key_prefix=f"tc_{cls}")
+            filtered = time_filter_controls(scope, key_prefix=f"tc_{cls}")
             _render_viz(filtered)
 
 if __name__ == "__main__":
