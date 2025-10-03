@@ -81,7 +81,7 @@ if submit or demo:
             )
             st.write(f"Dateien: `{meta.parquet_path}`, `{meta.csv_path}`")
             cols = [
-                "end_time_iso","time_class","rated",
+                "end_time","time_class","rated",
                 "white_username","white_rating","white_result",
                 "black_username","black_rating","black_result",
                 "eco","opening","termination",

@@ -1,7 +1,7 @@
 # models.py
 from __future__ import annotations
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, ConfigDict
 
 # ---------- Cache + HTTP ----------
@@ -69,26 +69,61 @@ class StatsModel(BaseModel):
 # ---------- Normalized row for DataFrame ----------
 class GameRow(BaseModel):
     game_url: Optional[str] = None
+    # Direct link to the game page on chess.com
+
     pgn_url: Optional[str] = None
+    # Link to the PGN file of the game
+
     time_control: Optional[str] = None
+    # Time control format (e.g. "600+0" = 10 minutes, no increment)
+
     time_class: Optional[str] = None
+    # Game category: "bullet", "blitz", "rapid", "daily"
+
     rules: Optional[str] = None
+    # Ruleset, usually "chess", sometimes variants like "chess960"
+
     rated: bool = False
-    end_time_iso: Optional[datetime] = None
+    # True if the game was rated and affected Elo ratings
+
+    end_time: Optional[datetime] = None
+    # UTC datetime when the game ended
+
     initial_setup_fen: Optional[str] = None
+    # Starting position in FEN notation (non-standard in Chess960, etc.)
+
     white_username: Optional[str] = None
+    # Username of the white player
+
     white_rating: Optional[int] = None
+    # Elo rating of the white player at the time of the game
+
     white_result: Optional[str] = None
+    # Result from white's perspective ("win", "checkmated", "timeout", "resigned",
+    # "stalemate", "agreed", "repetition", "abandoned", etc.)
+
     black_username: Optional[str] = None
+    # Username of the black player
+
     black_rating: Optional[int] = None
+    # Elo rating of the black player at the time of the game
+
     black_result: Optional[str] = None
+    # Result from black's perspective (same codes as white_result)
+
     eco: Optional[str] = None
+    # ECO (Encyclopaedia of Chess Openings) code, e.g. "C65"
+
     opening: Optional[str] = None
+    # Opening name, e.g. "Ruy Lopez, Berlin Defense"
+
     termination: Optional[str] = None
+    # Termination type reported by the server ("normal", "time vs. insufficient material",
+    # "abandoned", etc.)
 
     @staticmethod
     def from_game(g: GameModel) -> "GameRow":
-        ts = datetime.utcfromtimestamp(g.end_time) if g.end_time else None
+        ts = datetime.fromtimestamp(g.end_time, tz=timezone.utc) if g.end_time else None
         return GameRow(
             game_url=g.url,
             pgn_url=g.pgn,
@@ -96,7 +131,7 @@ class GameRow(BaseModel):
             time_class=g.time_class,
             rules=g.rules,
             rated=g.rated,
-            end_time_iso=ts,
+            end_time=ts,
             initial_setup_fen=g.initial_setup,
             white_username=g.white.username,
             white_rating=g.white.rating,

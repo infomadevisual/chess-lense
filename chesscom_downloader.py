@@ -1,4 +1,5 @@
 # chesscom_downloader.py
+from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
@@ -15,68 +16,88 @@ class ChesscomDownloader:
     def __init__(
         self,
         cache_root: Path = Path(".cache/chesscom"),
-        contact_email: str = "you@example.com",
+        contact_email: str = "infomadevisual@gmail.com",
         timeout: float = 20.0,
         sleep_sec: float = 0.2,
         session: Optional[requests.Session] = None,
     ):
         self.cache_root = cache_root
-        self.base_headers = {"User-Agent": f"ChessCom Analyzer (+mailto:{contact_email})"}
+        self.base_headers = {"User-Agent": f"chess.com Analyzer (+mailto:{contact_email})"}
         self.timeout = timeout
         self.sleep_sec = sleep_sec
         self.sess = session or requests.Session()
         self.cache_root.mkdir(parents=True, exist_ok=True)
 
     # ---------- public ----------
-    def download_all(self, username: str, progress_cb: Optional[Callable[[int, int], None]] = None) -> Tuple[pd.DataFrame, MetaModel]:
+    def download_all(self, username: str, progress_cb=None) -> tuple[pd.DataFrame, MetaModel]:
         u = username.strip().lower()
         cdir = self._ensure_user_dir(u)
         idx = self._load_index(cdir)
 
-        profile = self.fetch_profile(u, cdir, idx)
-        stats = self.fetch_stats(u, cdir, idx)
+        # Profile/Stats
+        self.fetch_profile(u, cdir, idx)
+        self.fetch_stats(u, cdir, idx)
 
         archives = self.list_archives(u)
-        meta = MetaModel(
-            username=u,
-            archives_count=len(archives),
-            profile_cached=profile is not None,
-            stats_cached=stats is not None,
-        )
-        if not archives:
-            return pd.DataFrame(), meta
+        meta = MetaModel(username=u, archives_count=len(archives))
 
-        rows: List[GameRow] = []
+        # 1) Load parquet
+        df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
+        months_in_parquet = self._months_in_df(df_existing) if df_existing is not None else set()
+
+        # 2) Get new data (only of current month if cached already)
+        rows: list[GameRow] = []
         total = len(archives)
         for i, month_url in enumerate(archives, start=1):
-            games = self.fetch_month_games(month_url, cdir, idx)
+            y, m = self._parse_ym_from_url(month_url)
+            month_key = f"{y}-{m:02d}"
+            is_current = self._is_current_month(y, m)
+            already_ingested = month_key in months_in_parquet
+
+            if not is_current and already_ingested:
+                # Historischer Monat bereits im Parquet -> skip
+                logger.info(f"SKIP {month_key} (already in parquet)")
+                if progress_cb: progress_cb(i, total)
+                continue
+
+            games = self._fetch_month_games_http(month_url, idx)  # nur HTTP
             rows.extend(GameRow.from_game(g) for g in games)
-            if progress_cb:
-                progress_cb(i, total)
+            if progress_cb: progress_cb(i, total)
 
-        # To DataFrame
-        ta = TypeAdapter(List[GameRow])
-        rows_dicts = [ta.validate_python([r])[0].model_dump() for r in rows]  # fully validated dicts
-        df = pd.DataFrame(rows_dicts)
+        # 3) build dataframe
+        if rows:
+            new_df = pd.DataFrame([r.model_dump() for r in rows])
+            if not new_df.empty:
+                new_df["end_time"] = pd.to_datetime(new_df["end_time"], utc=True)
+                for c in ["white_rating", "black_rating"]:
+                    new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
+        else:
+            new_df = pd.DataFrame()
 
-        if not df.empty:
-            # Normalize types for pandas
-            df["end_time_iso"] = pd.to_datetime(df["end_time_iso"], utc=True)
-            for c in ["white_rating", "black_rating"]:
-                df[c] = pd.to_numeric(df[c], errors="coerce")
+        # 4) Merge with existing parquet
+        if df_existing is None:
+            df_final = new_df
+        else:
+            if new_df.empty:
+                df_final = df_existing
+            else:
+                # Ersetze alle Monate, die in new_df vorkommen
+                upd_months = set(new_df["end_time"].dt.strftime("%Y-%m").unique())
+                mask_keep = ~df_existing["end_time"].dt.strftime("%Y-%m").isin(upd_months)
+                df_final = pd.concat([df_existing[mask_keep], new_df], ignore_index=True)
+                # Optional: Dedupe via game_url
+                if "game_url" in df_final.columns:
+                    df_final = df_final.sort_values("end_time").drop_duplicates("game_url", keep="last")
 
-            # Persist
-            dfp = cdir / "games.parquet"
-            dfc = cdir / "games.csv"
-            df.to_parquet(dfp, index=False)
-            df.to_csv(dfc, index=False, encoding="utf-8")
+        # 5) Persist nur Parquet
+        dfp = cdir / "games.parquet"
+        if df_final is not None and not df_final.empty:
+            df_final.to_parquet(dfp, index=False)
             meta.parquet_path = str(dfp)
-            meta.csv_path = str(dfc)
-            logger.info(f"Saved {dfp} and {dfc}")
+        meta.games_count = 0 if df_final is None else int(len(df_final))
 
-        meta.games_count = int(len(df))
         self._save_index(cdir, idx)
-        return df, meta
+        return (df_final if df_final is not None else pd.DataFrame()), meta
 
     def fetch_profile(self, username: str, cache_dir: Path, idx: IndexModel) -> Optional[ProfileModel]:
         url = f"https://api.chess.com/pub/player/{username}"
@@ -118,21 +139,78 @@ class ChesscomDownloader:
             logger.error(f"archives error: {e}")
         return []
 
-    def fetch_month_games(self, url: str, cache_dir: Path, idx: IndexModel) -> List[GameModel]:
+    # ---- internals ----
+    def _read_parquet(self, cache_dir: Path) -> Optional[pd.DataFrame]:
+        p = cache_dir / "games.parquet"
+        if p.exists():
+            try:
+                df = pd.read_parquet(p)
+                # Sicherstellen, dass end_time datetime[tz] ist
+                if "end_time" in df.columns:
+                    df["end_time"] = pd.to_datetime(df["end_time"], utc=True)
+                return df
+            except Exception as e:
+                logger.warning(f"Parquet read failed {p}: {e}")
+        return None
+
+    def _months_in_df(self, df: pd.DataFrame) -> set[str]:
+        if df is None or df.empty or "end_time" not in df.columns:
+            return set()
+        return set(df["end_time"].dt.strftime("%Y-%m").unique())
+
+    def _parse_ym_from_url(self, url: str) -> tuple[int, int]:
+        parts = url.rstrip("/").split("/")
+        return int(parts[-2]), int(parts[-1])
+
+    def _is_current_month(self, y: int, m: int) -> bool:
+        now = datetime.now(timezone.utc)
+        return (y == now.year) and (m == now.month)
+
+    def _fetch_month_games_http(self, url: str, idx: IndexModel) -> list[GameModel]:
+        # Optional: Conditional GET nur für aktuellen Monat sinnvoll
+        # Hier weiter ETag/Last-Modified auf entry.node pflegen, aber ohne path
         entry = idx.get_or_create_archive(url)
         data = self._fetch_conditional_json(url, entry.node)
         if not data:
             return []
         archive = MonthArchive.model_validate(data)
-        month = url.rsplit("/", 2)[-1].replace("/", "-")
-        p = cache_dir / "archives" / f"{month}.json"
+        logger.info(f"HTTP {len(archive.games)} games from {url}")
+        return archive.games
+
+    def fetch_month_games(self, url: str, cache_dir: Path, idx: IndexModel) -> List[GameModel]:
+        y, m = self._parse_ym_from_url(url)
+        month_key = f"{y}-{m:02d}"
+        p = cache_dir / "archives" / f"{month_key}.json"
+
+        entry = idx.get_or_create_archive(url)
+
+        # 1) Historische Monate: direkt aus Datei, kein HTTP
+        if not self._is_current_month(y, m) and p.exists():
+            logger.info(f"LOAD-CACHE {month_key} (historical)")
+            entry.node.path = str(p)
+            try:
+                return MonthArchive.model_validate_json(p.read_text(encoding="utf-8")).games
+            except Exception as e:
+                logger.warning(f"Cache read failed {p}: {e} -> fallback to HTTP")
+
+        # 2) Aktueller Monat ODER Cache fehlt: Conditional GET
+        data = self._fetch_conditional_json(url, entry.node)
+        if not data:
+            # 304 oder Fehler -> falls Datei existiert, daraus laden
+            if p.exists():
+                try:
+                    return MonthArchive.model_validate_json(p.read_text(encoding="utf-8")).games
+                except Exception as e:
+                    logger.error(f"Fallback cache read failed {p}: {e}")
+            return []
+
+        archive = MonthArchive.model_validate(data)
         p.write_text(archive.model_dump_json(indent=2), encoding="utf-8")
         entry.node.path = str(p)
         self._save_index(cache_dir, idx)
-        logger.info(f"{len(archive.games)} games in {month}")
+        logger.info(f"{len(archive.games)} games in {month_key}")
         return archive.games
-
-    # ---------- internals ----------
+    
     def _ensure_user_dir(self, username: str) -> Path:
         p = self.cache_root / username
         p.mkdir(parents=True, exist_ok=True)
