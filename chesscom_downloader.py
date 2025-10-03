@@ -155,6 +155,9 @@ class ChesscomDownloader:
         if not time_control:
             return None
 
+        if "/" in time_control:
+            return "daily"
+
         # handle purely numeric cases like "180"
         if time_control.isdigit():
             total = int(time_control)
@@ -176,7 +179,7 @@ class ChesscomDownloader:
             if rest and rest[0].isdigit():
                 inc = int(rest[0])
                 if inc > 0:
-                    label += f" +{inc}s"
+                    label += f"+{inc}s"
             return label
 
         return time_control  # fallback
