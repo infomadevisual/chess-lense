@@ -14,6 +14,22 @@ if Config.debug == True and Config.load_user != None:
     session.games_df = downloader.load_from_cache(Config.load_user)
     session.persist()
 
+# Global Styling
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding: 2rem !important;
+        }
+        .stApp {
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Page Setup
 st.set_page_config(
     page_title="chess.com Analyzer • Home",

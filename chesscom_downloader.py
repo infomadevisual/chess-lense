@@ -32,7 +32,13 @@ class ChesscomDownloader:
         u = username.strip().lower()
         cdir = self._ensure_user_dir(u)
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
-        return df_existing if df_existing is not None else pd.DataFrame()
+
+        if df_existing is None:
+            return pd.DataFrame()
+        
+        # TODO: postprocess hack since not in current parquet
+        df_existing["time_label"] = df_existing["time_control"].apply(self.format_time_label)
+        return df_existing
 
     def download_all(self, username: str, progress_cb=None) -> pd.DataFrame:
         u = username.strip().lower()
@@ -93,7 +99,10 @@ class ChesscomDownloader:
                 if "game_url" in df_final.columns:
                     df_final = df_final.sort_values("end_time").drop_duplicates("game_url", keep="last")
 
-        # 5) Persist nur Parquet
+        # 5) Postprocess
+        df_final["time_label"] = df_final["time_control"].apply(self.format_time_label)
+
+        # 6) Persist Parquet
         dfp = cdir / "games.parquet"
         if df_final is not None and not df_final.empty:
             df_final.to_parquet(dfp, index=False)
@@ -142,6 +151,36 @@ class ChesscomDownloader:
         return []
 
     # ---- internals ----
+    def format_time_label(self, time_control: str | None) -> str | None:
+        if not time_control:
+            return None
+
+        # handle purely numeric cases like "180"
+        if time_control.isdigit():
+            total = int(time_control)
+            mins, secs = divmod(total, 60)
+            if secs == 0:
+                return f"{mins}m"
+            return f"{mins}m {secs}s" if mins else f"{secs}s"
+
+        # handle standard formats like "600+5"
+        # we only care about the base time
+        base, *rest = time_control.split("+")
+        if base.isdigit():
+            total = int(base)
+            mins, secs = divmod(total, 60)
+            if secs == 0:
+                label = f"{mins}m"
+            else:
+                label = f"{mins}m {secs}s" if mins else f"{secs}s"
+            if rest and rest[0].isdigit():
+                inc = int(rest[0])
+                if inc > 0:
+                    label += f" +{inc}s"
+            return label
+
+        return time_control  # fallback
+
     def _read_parquet(self, cache_dir: Path) -> Optional[pd.DataFrame]:
         p = cache_dir / "games.parquet"
         if p.exists():
