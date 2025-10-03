@@ -13,9 +13,7 @@ class AppSession(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # allow pandas objects
 
     username: Optional[str] = None
-    games_df: Optional[pd.DataFrame] = None
-
-
+    games_df: pd.DataFrame = pd.DataFrame()
 
     @property
     def game_count(self) -> int:
@@ -25,10 +23,9 @@ class AppSession(BaseModel):
     def from_streamlit(cls) -> "AppSession":
         return cls(
             username=st.session_state.get(KEY_USERNAME),
-            games_df=st.session_state.get(KEY_DF),
+            games_df=st.session_state.get(KEY_DF, pd.DataFrame()),
         )
 
     def persist(self) -> None:
         st.session_state[KEY_USERNAME] = self.username
         st.session_state[KEY_DF] = self.games_df
-        
