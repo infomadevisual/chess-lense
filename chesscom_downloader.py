@@ -29,6 +29,15 @@ class ChesscomDownloader:
         self.cache_root.mkdir(parents=True, exist_ok=True)
 
     # ---------- public ----------
+    def load_from_cache(self, username: str, progress_cb=None) -> tuple[pd.DataFrame, MetaModel]:
+        u = username.strip().lower()
+        cdir = self._ensure_user_dir(u)
+        idx = self._load_index(cdir)
+        df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
+        months_in_parquet = self._months_in_df(df_existing) if df_existing is not None else set()
+        meta = MetaModel(username=u)
+        return (df_existing if df_existing is not None else pd.DataFrame()), meta
+
     def download_all(self, username: str, progress_cb=None) -> tuple[pd.DataFrame, MetaModel]:
         u = username.strip().lower()
         cdir = self._ensure_user_dir(u)
@@ -39,7 +48,7 @@ class ChesscomDownloader:
         self.fetch_stats(u, cdir, idx)
 
         archives = self.list_archives(u)
-        meta = MetaModel(username=u, archives_count=len(archives))
+        meta = MetaModel(username=u)
 
         # 1) Load parquet
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
@@ -60,7 +69,7 @@ class ChesscomDownloader:
                 if progress_cb: progress_cb(i, total)
                 continue
 
-            games = self._fetch_month_games_http(month_url, idx)  # nur HTTP
+            games = self._fetch_month_games_http(month_url, idx)
             rows.extend(GameRow.from_game(g) for g in games)
             if progress_cb: progress_cb(i, total)
 

@@ -147,9 +147,5 @@ class GameRow(BaseModel):
 # ---------- Meta for UI ----------
 class MetaModel(BaseModel):
     username: str
-    archives_count: int = 0
     games_count: int = 0
-    profile_cached: bool = False
-    stats_cached: bool = False
     parquet_path: Optional[str] = None
-    csv_path: Optional[str] = None

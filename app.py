@@ -17,16 +17,14 @@ logger = logging.getLogger("chesscom")
 
 # ---------- Streamlit ----------
 st.set_page_config(page_title="ChessCom Analyzer • Load", page_icon="♟️", layout="centered")
-st.title("Chess.com Analyzer")
-st.subheader("Spiele laden und lokal cachen")
+st.title("chess.com Analyzer")
+st.subheader("Load your games and analyze!")
 
 SESSION_KEY_USERNAME = "cc_username"
 SESSION_KEY_DF = "games_df"
 SESSION_KEY_META = "games_meta"
 
 downloader = ChesscomDownloader(
-    cache_root=Path(".cache/chesscom"),
-    contact_email="you@example.com",
     timeout=20.0,
     sleep_sec=0.2,
 )
@@ -35,11 +33,11 @@ with st.form("user_form", clear_on_submit=False):
     username_input = st.text_input(
         "Chess.com Username",
         value=st.session_state.get(SESSION_KEY_USERNAME, ""),
-        help="Kleinschreibung wird erzwungen",
+        help="lower-case enforced",
     )
     c1, c2 = st.columns(2)
     with c1:
-        submit = st.form_submit_button("Spiele herunterladen", type="primary")
+        submit = st.form_submit_button("Load", type="primary")
     with c2:
         demo = st.form_submit_button("Demo: hikaru")
 
@@ -72,14 +70,14 @@ if submit or demo:
     st.session_state[SESSION_KEY_META] = meta
 
     if df.empty:
-        st.warning("Keine Spiele gefunden.")
+        st.warning("No Games found.")
     else:
-        st.success(f"{meta.games_count} Spiele geladen.")
-        with st.expander("Zusammenfassung", expanded=True):
+        st.success(f"{meta.games_count} Games loaded.")
+        with st.expander("Summary", expanded=True):
             st.write(
-                f"User: **{meta.username}** | Monate: **{meta.archives_count}** | Spiele: **{meta.games_count}**"
+                f"User: **{meta.username}** | Games: **{meta.games_count}**"
             )
-            st.write(f"Dateien: `{meta.parquet_path}`, `{meta.csv_path}`")
+            st.write(f"Files: `{meta.parquet_path}`")
             cols = [
                 "end_time","time_class","rated",
                 "white_username","white_rating","white_result",
