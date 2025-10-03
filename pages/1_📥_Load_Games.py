@@ -4,7 +4,7 @@ import streamlit as st
 from pathlib import Path
 from chesscom_downloader import ChesscomDownloader
 from config import Config
-from lib.app_session import AppSession
+from app_session import AppSession
 from ui import inject_page_styles
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

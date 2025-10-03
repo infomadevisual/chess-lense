@@ -1,26 +1,75 @@
 # dashboard_checkboxes.py
 import streamlit as st
 import pandas as pd
-
-from lib.app_session import AppSession
+import altair as alt
+import numpy as np
+from app_session import AppSession
 from ui import inject_page_styles, time_filter_controls
 
 _ORDER = ["bullet", "blitz", "rapid", "daily", "classical"]
 
-def _normalize_time_label(tc: str) -> str:
-    if not tc or not isinstance(tc, str):
-        return "unknown"
-    try:
-        if "+" in tc:
-            base, inc = tc.split("+", 1)
-            mins = int(int(base) / 60)
-            inc_s = int(inc)
-            return f"{mins}+{inc_s} min" if inc_s else f"{mins} min"
-        if "/" in tc:
-            return "daily (correspondence)"
-        return tc
-    except Exception:
-        return tc
+DRAW_CODES = {"stalemate","agreed","repetition","insufficient","threecheck","50move","timevsinsufficient","abandoned"}  # be liberal
+
+def _perspective_cols(df: pd.DataFrame, me: str) -> pd.DataFrame:
+    me = (me or "").strip().lower()
+    is_white = df["white_username"].str.lower().eq(me)
+    is_black = df["black_username"].str.lower().eq(me)
+
+    # opponent rating
+    opp_rating = np.where(is_white, df["black_rating"], df["white_rating"])
+    my_rating  = np.where(is_white, df["white_rating"], df["black_rating"])
+
+    # perspective result
+    wr = df["white_result"].fillna("").str.lower()
+    br = df["black_result"].fillna("").str.lower()
+
+    win  = (is_white & wr.eq("win")) | (is_black & br.eq("win"))
+    loss = (is_white & br.eq("win")) | (is_black & wr.eq("win"))
+    draw = (
+        (is_white & wr.isin(DRAW_CODES)) |
+        (is_black & br.isin(DRAW_CODES)) |
+        # fallback: both not "win" and not empty -> treat as draw-ish
+        (~win & ~loss & (wr.ne("") | br.ne("")))
+    )
+
+    result = np.where(win, "win", np.where(draw, "draw", np.where(loss, "loss", "other")))
+    color  = np.where(is_white, "white", np.where(is_black, "black", "unknown"))
+
+    out = df.copy()
+    out["me_color"] = color
+    out["opp_rating"] = pd.to_numeric(opp_rating, errors="coerce")
+    out["my_rating"]  = pd.to_numeric(my_rating, errors="coerce")
+    out["result_me"]  = result
+    # monthly bucket
+    if "end_time" in out.columns:
+        out["month"] = pd.to_datetime(out["end_time"], utc=True, errors="coerce").dt.to_period("M").dt.to_timestamp()
+    return out
+
+def _kpi(win_rate: float, n: int, avg_opp: float, rated_delta: float):
+    c1,c2,c3,c4 = st.columns(4)
+    c1.metric("Games", n)
+    c2.metric("Win-rate", f"{win_rate:.0%}")
+    c3.metric("Avg opp Elo", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—")
+    c4.metric("Rated Δ (latest-first)", f"{rated_delta:+.0f}")
+
+def _render_viz(df: pd.DataFrame, username:str):
+    st.caption(f"{len(df)} games")
+    if df.empty:
+        st.info("No games for this selection.")
+        return
+    
+    dfp = _perspective_cols(df, username)
+    dfp = dfp.dropna(subset=["end_time"])
+    # KPIs
+    wins = (dfp["result_me"] == "win").sum()
+    draws = (dfp["result_me"] == "draw").sum()
+    total = len(dfp)
+    win_rate = wins / total if total else 0.0
+    avg_opp = dfp["opp_rating"].mean()
+    # simple rated delta: last minus first by end_time within rated games
+    rated = dfp[dfp["rated"] == True].sort_values("end_time")
+    rated_delta = (rated["my_rating"].iloc[-1] - rated["my_rating"].iloc[0]) if len(rated) >= 2 else 0
+    _kpi(win_rate, total, avg_opp, rated_delta)
 
 def _order_classes(classes):
     lower = [c.lower() if isinstance(c, str) else "unknown" for c in classes]
@@ -28,21 +77,6 @@ def _order_classes(classes):
     ordered = [c for c in _ORDER if c in lower and not (c in seen or seen.add(c))]
     rest = [c for c in lower if c not in seen]
     return ordered + sorted(rest)
-
-def _render_viz(df: pd.DataFrame):
-    st.caption(f"{len(df)} games")
-    if df.empty:
-        st.info("No games for this selection.")
-        return
-    if "end_time" in df.columns and pd.api.types.is_datetime64_any_dtype(df["end_time"]):
-        monthly = df.resample("ME", on="end_time").size().rename("games")
-        st.line_chart(monthly)
-    if "opening" in df.columns:
-        top_open = df["opening"].fillna("unknown").value_counts().head(10)
-        st.bar_chart(top_open)
-    show_cols = [c for c in ["game_url","time_class","time_control","opening","eco","rated","end_time"] if c in df.columns]
-    st.dataframe(df[show_cols].head(50), width="stretch")
-
 
 def run():
     inject_page_styles()
@@ -60,6 +94,10 @@ def run():
     df = session.games_df
     if df is None or df.empty:
         st.warning("No games loaded. Go to Home and load your games first.")
+        return
+
+    if session.username is None:
+        st.error("No user loaded. Go to Home and load your games first.")
         return
 
     total_n = len(df)
@@ -109,7 +147,7 @@ def run():
 
     top_tabs = st.tabs(top_labels)
     with top_tabs[0]:
-        _render_viz(df_range)
+        _render_viz(df_range, session.username)
 
     for i, cls in enumerate(classes, start=1):
         with top_tabs[i]:
@@ -118,7 +156,7 @@ def run():
                 st.info("No games in this class.")
                 continue
             filtered = time_filter_controls(scope, key_prefix=f"tc_{cls}")
-            _render_viz(filtered)
+            _render_viz(filtered, session.username)
 
 if __name__ == "__main__":
     run()

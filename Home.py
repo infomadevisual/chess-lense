@@ -3,7 +3,7 @@ import streamlit as st
 
 from chesscom_downloader import ChesscomDownloader
 from config import Config
-from lib.app_session import AppSession
+from app_session import AppSession
 
 session = AppSession.from_streamlit()
 
