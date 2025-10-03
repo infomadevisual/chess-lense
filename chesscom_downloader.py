@@ -41,15 +41,14 @@ class ChesscomDownloader:
         return df_existing
 
     def download_all(self, username: str, progress_cb=None) -> pd.DataFrame:
-        u = username.strip().lower()
-        cdir = self._ensure_user_dir(u)
+        cdir = self._ensure_user_dir(username)
         idx = self._load_index(cdir)
 
         # Profile/Stats
-        self.fetch_profile(u, cdir, idx)
-        self.fetch_stats(u, cdir, idx)
+        self.fetch_profile(username, cdir, idx)
+        self.fetch_stats(username, cdir, idx)
 
-        archives = self.list_archives(u)
+        archives = self.list_archives(username)
 
         # 1) Load parquet
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
@@ -71,7 +70,7 @@ class ChesscomDownloader:
                 continue
 
             games = self._fetch_month_games_http(month_url, idx)
-            rows.extend(GameRow.from_game(g) for g in games)
+            rows.extend(GameRow.from_game(g, username) for g in games)
             if progress_cb: progress_cb(i, total)
 
         # 3) build dataframe
@@ -79,7 +78,7 @@ class ChesscomDownloader:
             new_df = pd.DataFrame([r.model_dump() for r in rows])
             if not new_df.empty:
                 new_df["end_time"] = pd.to_datetime(new_df["end_time"], utc=True)
-                for c in ["white_rating", "black_rating"]:
+                for c in ["user_rating", "opponent_rating"]:
                     new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
         else:
             new_df = pd.DataFrame()
@@ -189,7 +188,6 @@ class ChesscomDownloader:
         if p.exists():
             try:
                 df = pd.read_parquet(p)
-                # Sicherstellen, dass end_time datetime[tz] ist
                 if "end_time" in df.columns:
                     df["end_time"] = pd.to_datetime(df["end_time"], utc=True)
                 return df

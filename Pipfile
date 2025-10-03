@@ -7,6 +7,10 @@ name = "pypi"
 pydantic = "*"
 
 [dev-packages]
+notebook = "*"
+jupyterlab = "*"
+ipykernel = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.13"

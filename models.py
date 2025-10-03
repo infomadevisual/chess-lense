@@ -41,14 +41,13 @@ class GameModel(BaseModel):
     time_control: Optional[str] = None
     time_class: Optional[str] = None
     rules: Optional[str] = None
-    rated: bool = False
-    end_time: Optional[int] = None  # epoch seconds
+    rated: Optional[bool] = False
+    end_time: Optional[int] = None
     initial_setup: Optional[str] = None
     eco: Optional[str] = None
-    opening: Optional[str] = None
-    termination: Optional[str] = None
-    white: PlayerRef = Field(default_factory=PlayerRef)
-    black: PlayerRef = Field(default_factory=PlayerRef)
+    tournament: Optional[str] = None
+    white: PlayerRef
+    black: PlayerRef
 
 class MonthArchive(BaseModel):
     games: List[GameModel] = Field(default_factory=list)
@@ -68,78 +67,76 @@ class StatsModel(BaseModel):
 
 # ---------- Normalized row for DataFrame ----------
 class GameRow(BaseModel):
-    game_url: Optional[str] = None
-    # Direct link to the game page on chess.com
-
-    pgn_url: Optional[str] = None
-    # Link to the PGN file of the game
-
-    time_control: Optional[str] = None
-    # Time control format (e.g. "600+0" = 10 minutes, no increment)
-
-    time_class: Optional[str] = None
-    # Game category: "bullet", "blitz", "rapid", "daily"
-
-    rules: Optional[str] = None
-    # Ruleset, usually "chess", sometimes variants like "chess960"
-
-    rated: bool = False
-    # True if the game was rated and affected Elo ratings
-
     end_time: Optional[datetime] = None
-    # UTC datetime when the game ended
-
+    username: Optional[str] = None
+    opponent_username: Optional[str] = None
+    user_played_as: Optional[str] = None
+    user_result: Optional[str] = None
+    user_result_simple: Optional[str] = None
+    opponent_result:Optional[str] = None
+    user_rating: Optional[int] = None
+    opponent_rating: Optional[int] = None
+    rated: Optional[bool] = None
+    rules: Optional[str] = None
+    time_class: Optional[str] = None
+    time_control: Optional[str] = None
     initial_setup_fen: Optional[str] = None
-    # Starting position in FEN notation (non-standard in Chess960, etc.)
-
-    white_username: Optional[str] = None
-    # Username of the white player
-
-    white_rating: Optional[int] = None
-    # Elo rating of the white player at the time of the game
-
-    white_result: Optional[str] = None
-    # Result from white's perspective ("win", "checkmated", "timeout", "resigned",
-    # "stalemate", "agreed", "repetition", "abandoned", etc.)
-
-    black_username: Optional[str] = None
-    # Username of the black player
-
-    black_rating: Optional[int] = None
-    # Elo rating of the black player at the time of the game
-
-    black_result: Optional[str] = None
-    # Result from black's perspective (same codes as white_result)
-
-    eco: Optional[str] = None
-    # ECO (Encyclopaedia of Chess Openings) code, e.g. "C65"
-
-    opening: Optional[str] = None
-    # Opening name, e.g. "Ruy Lopez, Berlin Defense"
-
-    termination: Optional[str] = None
-    # Termination type reported by the server ("normal", "time vs. insufficient material",
-    # "abandoned", etc.)
+    game_url: Optional[str] = None
+    pgn_url: Optional[str] = None
+    eco_url: Optional[str] = None
+    tournament_url: Optional[str] = None
 
     @staticmethod
-    def from_game(g: GameModel) -> "GameRow":
-        ts = datetime.fromtimestamp(g.end_time, tz=timezone.utc) if g.end_time else None
+    def from_game(g: GameModel, username: str) -> "GameRow":
+        if g.black.username != None and g.black.username.strip().lower() == username:
+            user_played_as = "black"
+            user_name = g.black.username
+            opponent_username = g.white.username
+            user_rating = g.black.rating
+            opponent_rating = g.white.rating
+            user_result = g.black.result
+            opponent_result = g.white.result
+        elif g.white.username != None and g.white.username.strip().lower() == username:
+            user_played_as = "white"
+            user_name = g.white.username
+            opponent_username = g.black.username
+            user_rating = g.white.rating
+            opponent_rating = g.black.rating
+            user_result = g.white.result
+            opponent_result = g.black.result
+        else:
+            print("Something went wrong, skipping game.")
+
         return GameRow(
-            game_url=g.url,
-            pgn_url=g.pgn,
-            time_control=g.time_control,
-            time_class=g.time_class,
-            rules=g.rules,
+            end_time=datetime.fromtimestamp(g.end_time, tz=timezone.utc) if g.end_time else None,
+            username=user_name,
+            opponent_username=opponent_username,
+            user_played_as=user_played_as,
+            user_result=user_result,
+            user_result_simple=GameRow.simplify_result(user_result),
+            opponent_result=opponent_result,
+            user_rating=user_rating,
             rated=g.rated,
-            end_time=ts,
+            opponent_rating=opponent_rating,
+            rules=g.rules,
+            time_class=g.time_class,
+            time_control=g.time_control,
             initial_setup_fen=g.initial_setup,
-            white_username=g.white.username,
-            white_rating=g.white.rating,
-            white_result=g.white.result,
-            black_username=g.black.username,
-            black_rating=g.black.rating,
-            black_result=g.black.result,
-            eco=g.eco,
-            opening=g.opening,
-            termination=g.termination,
+            game_url=g.url,
+            eco_url=g.eco,
+            tournament_url=g.tournament,
+            pgn_url=g.pgn,
         )
+    
+    @staticmethod
+    def simplify_result(result: Optional[str]) -> Optional[str]:
+        if result is None:
+            return None
+        result = result.lower()
+        if result in ["win"]:
+            return "win"
+        if result in ["agreed", "stalemate", "repetition", "insufficient", "50move", "timevsinsufficient"]:
+            return "draw"
+        if result in ["checkmated", "resigned", "timeout", "abandoned", "lose"]:
+            return "loss"
+        return None  # fallback if chess.com adds new codes

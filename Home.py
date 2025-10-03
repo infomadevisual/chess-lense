@@ -57,5 +57,5 @@ st.info("Tip: Use the navigation bar on the left to switch between pages.")
 
 c1, c2 = st.columns(2)
 with c1:
-    if st.button("Load games", type="primary"):
+    if st.button("Go to 📥 Load Games", type="primary"):
         st.switch_page("pages/1_📥_Load_Games.py")

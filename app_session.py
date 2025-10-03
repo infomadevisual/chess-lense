@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from pydantic import BaseModel, ConfigDict
-from typing import Any, Optional
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar, Optional
+
+KEY_USERNAME = "cc_username"
+KEY_DF = "games_df"
 
 # Centralized keys
 class AppSession(BaseModel):
@@ -12,12 +15,7 @@ class AppSession(BaseModel):
     username: Optional[str] = None
     games_df: Optional[pd.DataFrame] = None
 
-    key_username = "cc_username"
-    key_df = "games_df"
 
-    @property
-    def has_data(self) -> bool:
-        return self.games_df is not None and not self.games_df.empty
 
     @property
     def game_count(self) -> int:
@@ -26,11 +24,11 @@ class AppSession(BaseModel):
     @classmethod
     def from_streamlit(cls) -> "AppSession":
         return cls(
-            username=st.session_state.get(AppSession.key_username),
-            games_df=st.session_state.get(AppSession.key_df)
+            username=st.session_state.get(KEY_USERNAME),
+            games_df=st.session_state.get(KEY_DF),
         )
 
     def persist(self) -> None:
-        st.session_state[AppSession.key_username] = self.username
-        st.session_state[AppSession.key_df] = self.games_df
+        st.session_state[KEY_USERNAME] = self.username
+        st.session_state[KEY_DF] = self.games_df
         
