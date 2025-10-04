@@ -1,8 +1,9 @@
+import time
 import streamlit as st
 import pandas as pd
 import altair as alt
 from utils.app_session import AppSession
-from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls
+from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls, toast_once
 from urllib.parse import urlparse, unquote
 import re
 
@@ -27,17 +28,10 @@ def _render_viz(df:pd.DataFrame):
     else:
         df["opening"] = None  # placeholder if nothing available
 
-    missing = df["opening"].isna().sum()
-    # gate the message
-    key = "last_missing_opening"
-    if key not in st.session_state:
-        st.session_state[key] = None
-
-    if missing > 0 and st.session_state[key] != missing:
-        with st.sidebar:
-            st.toast(f"Ignored {missing} games without opening info.", icon="ℹ️")
-        st.session_state[key] = missing
-
+    # after computing `missing`
+    missing = int(df["opening"].isna().sum())
+    if missing > 0:
+        toast_once("missing_opening", f"Ignored {missing} games without opening info.", "ℹ️")
 
     df = df.dropna(subset=["opening"])
 

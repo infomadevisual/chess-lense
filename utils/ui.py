@@ -4,6 +4,11 @@ import streamlit as st
 
 from utils.app_session import AppSession
 
+def toast_once(key: str, text: str, icon:str):
+    skey = f"toast::{key}"
+    if st.session_state.get(skey) != text:
+        st.toast(text, icon=icon)
+        st.session_state[skey] = text
 
 def load_validate_df() -> pd.DataFrame:
     session = AppSession.from_streamlit()
