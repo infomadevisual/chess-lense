@@ -18,6 +18,7 @@ def _render_viz(df:pd.DataFrame):
     df["month"] = df["end_time_local"].dt.month          # 1–12
     df["weekday"] = df["end_time_local"].dt.dayofweek    # 0=Mon .. 6=Sun
     df["weekday_name"] = df["end_time_local"].dt.strftime("%A")
+    df["hour"] = df["end_time_local"].dt.hour
 
     # ---- Aggregations ----
     order_map = {"win": 0, "draw": 1, "loss": 2}
