@@ -57,17 +57,22 @@ def _render_viz(df:pd.DataFrame):
     top_n = 10
     st.text(f"Top {top_n} openings played showing your win-rate from white (low) to blue (high)")
     top = counts.sort_values("games", ascending=False).head(top_n)
+    top["opening_wrapped"] = top["opening"].str.replace(" ", "\n", 2)
+
+    row_height = 50
 
     chart = (
         alt.Chart(top)
         .mark_bar()
         .encode(
-            x=alt.X("opening:N", sort="-y", title="Opening"),
-            y=alt.Y("games:Q", title="# Games"),
+            y=alt.Y("opening:N", sort="-x", title=None,
+                    axis=alt.Axis(labelLimit=600)),  # no truncation
+            x=alt.X("games:Q", title="# Games"),
             color=alt.Color("win_rate:Q", scale=alt.Scale(scheme="blues")),
-            tooltip=["opening", "games", "win", "draw", "loss", "win_rate"]
+            tooltip=["opening", "games", "win", "draw", "loss",
+                    alt.Tooltip("win_rate:Q", format=".1%")]
         )
-    )
+    ).properties(height=row_height * len(top))
 
     st.altair_chart(chart, use_container_width=True)
 
