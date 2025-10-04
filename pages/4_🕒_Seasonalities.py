@@ -15,7 +15,13 @@ def _render_viz(df:pd.DataFrame):
     df["hour"] = df["end_time_local"].dt.hour
 
     # ---- Aggregations ----
+    order_map = {"win": 0, "draw": 1, "loss": 2}
+    color_legend=alt.Color("user_result_simple:N", sort= ["loss", "draw", "win"])
+    bar_order=alt.Order("order_key:Q", sort="ascending")
+    y_axis = alt.Y("share:Q", title="Share (%)")
+
     # Hour
+    st.text(f"Hour of the day performance")
     tmp = (
         df.groupby("hour")["user_result_simple"]
         .value_counts(normalize=True)
@@ -30,19 +36,22 @@ def _render_viz(df:pd.DataFrame):
     tmp["hour"] = tmp["hour"].astype("Int64").astype(str)
     tmp["share"] = tmp["share"]*100
     tmp = tmp[tmp["share"] > 0]
+    tmp["order_key"] = tmp["user_result_simple"].map(order_map)
 
     chart = (
         alt.Chart(tmp)
         .mark_bar()
         .encode(
             x=alt.X("label:N", title="Hours", sort=None, axis=alt.Axis(labelAngle=0)),
-            y=alt.Y("share:Q", title="Share (%)"),
-            color=alt.Color("user_result_simple:N", sort=["win","draw","loss"])
+            y=y_axis,
+            color=color_legend,
+            order=bar_order
         )
     )
     st.altair_chart(chart, use_container_width=True)
 
     # Weekday
+    st.text(f"Day of the week performance")
     order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
     weekday_long = (
@@ -56,21 +65,24 @@ def _render_viz(df:pd.DataFrame):
     counts = df.groupby("weekday").size().rename("n").reset_index()
     weekday_long = weekday_long.merge(counts, on="weekday", how="left")
     weekday_long["label"] = weekday_long["weekday"].astype(str) + " (" + weekday_long["n"].astype(str) + ")"
-    weekday_long["pct"] = weekday_long["share"] * 100
+    weekday_long["share"] = weekday_long["share"] * 100
+    weekday_long["order_key"] = weekday_long["user_result_simple"].map(order_map)
 
     chart = (
         alt.Chart(weekday_long)
         .mark_bar()
         .encode(
             x=alt.X("label:N", title="Weekdays", sort=None, axis=alt.Axis(labelAngle=0, title=None)),
-            y=alt.Y("pct:Q", title="Share (%)"),
-            color=alt.Color("user_result_simple:N", sort=["win","draw","loss"])
+            y=y_axis,
+            color=color_legend,
+            order=bar_order
         )
     )
 
     st.altair_chart(chart, use_container_width=True)
 
     # Month
+    st.text(f"Month of the year performance")
     tmp = (
         df.groupby("month")["user_result_simple"]
         .value_counts(normalize=True)
@@ -85,19 +97,22 @@ def _render_viz(df:pd.DataFrame):
     tmp["month"] = tmp["month"].astype("Int64").astype(str)
     tmp["share"] = tmp["share"]*100
     tmp = tmp[tmp["share"] > 0]
+    tmp["order_key"] = tmp["user_result_simple"].map(order_map)
 
     chart = (
         alt.Chart(tmp)
         .mark_bar()
         .encode(
             x=alt.X("label:N", title="Months", sort=None, axis=alt.Axis(labelAngle=0)),
-            y=alt.Y("share:Q", title="Share (%)"),
-            color=alt.Color("user_result_simple:N", sort=["win","draw","loss"])
+            y=y_axis,
+            color=color_legend,
+            order=bar_order
         )
     )
     st.altair_chart(chart, use_container_width=True)
         
     # Year
+    st.text(f"Yearly performance.")
     tmp = (
         df.groupby("year")["user_result_simple"]
         .value_counts(normalize=True)
@@ -112,14 +127,16 @@ def _render_viz(df:pd.DataFrame):
     tmp["year"] = tmp["year"].astype("Int64").astype(str)
     tmp["share"] = tmp["share"]*100
     tmp = tmp[tmp["share"] > 0]
+    tmp["order_key"] = tmp["user_result_simple"].map(order_map)
 
     chart = (
         alt.Chart(tmp)
         .mark_bar()
         .encode(
             x=alt.X("label:N", title="Years", sort=None, axis=alt.Axis(labelAngle=0)),
-            y=alt.Y("share:Q", title="Share (%)"),
-            color=alt.Color("user_result_simple:N", sort=["win","draw","loss"])
+            y=y_axis,
+            color=color_legend,
+            order=bar_order
         )
     )
     st.altair_chart(chart, use_container_width=True)

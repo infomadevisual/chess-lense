@@ -42,19 +42,17 @@ st.subheader("Analyze your chess.com games like never before")
 
 st.markdown(
     """
-Welcome to **chess.com Analyzer** — your personal dashboard for deep insights into your chess.com games.  
-Here you can:
+Welcome to **chess.com Analyzer** — your personal dashboard for deep insights into your chess.com games.
 - 📥 Load your full game history directly from chess.com
 - 📊 Explore your general performance
-- 🕒 Temporal_Analysis shows you when you perform the best and the worst
+- 📖 Openings Analysis give you a quick overview of your best- and worst-performing openings
+- 🕒 Seasonality Analysis shows you when you perform the best and the worst
 - 🔍 Compare your play against **other players**  
-- 👑 Discover how top grandmasters approach the same positions  
-
-Get started by entering your **chess.com username** in the *Load Games* page from the sidebar.
+- 👑 Discover how top grandmasters approach the same positions 
 """
 )
 
-st.info("Tip: Use the navigation bar on the left to switch between pages.")
+st.info("Get started by entering your **chess.com username** in the *Load Games* page from the sidebar.")
 
 c1, c2 = st.columns(2)
 with c1:

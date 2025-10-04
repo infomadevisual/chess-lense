@@ -27,20 +27,41 @@ def _render_viz(df:pd.DataFrame):
     else:
         df["opening"] = None  # placeholder if nothing available
 
+    missing = df["opening"].isna().sum()
+    # gate the message
+    key = "last_missing_opening"
+    if key not in st.session_state:
+        st.session_state[key] = None
+
+    if missing > 0 and st.session_state[key] != missing:
+        with st.sidebar:
+            st.toast(f"Ignored {missing} games without opening info.", icon="ℹ️")
+        st.session_state[key] = missing
+
+
+    df = df.dropna(subset=["opening"])
+
     # Count openings
     counts = (
         df.groupby("opening")["user_result_simple"]
         .value_counts()
         .unstack(fill_value=0)
+        .reindex(columns=["win", "draw", "loss"], fill_value=0)
         .reset_index()
     )
+
+    if counts.empty:
+        st.warning("No data available for the selected filters.")
+        st.stop()
 
     # Winrate
     counts["games"] = counts.sum(axis=1, numeric_only=True)
     counts["win_rate"] = counts["win"] / counts["games"]
 
     # Top 15 openings by number of games
-    top = counts.sort_values("games", ascending=False).head(10)
+    top_n = 10
+    st.text(f"Top {top_n} openings played showing your win-rate from white (low) to blue (high)")
+    top = counts.sort_values("games", ascending=False).head(top_n)
 
     chart = (
         alt.Chart(top)
@@ -55,7 +76,10 @@ def _render_viz(df:pd.DataFrame):
 
     st.altair_chart(chart, use_container_width=True)
 
-    st.dataframe(counts.sort_values("games", ascending=False).head(100))
+    top_n = 100
+    st.text(f"Top {top_n} openings played and win-rate")
+    cols = ["opening", "games", "win_rate", "win", "draw", "loss"]  # desired order
+    st.dataframe(counts[cols].sort_values("games", ascending=False).head(top_n))
 
 # ---- Load Data and Apply filters ----
 df = load_validate_df()

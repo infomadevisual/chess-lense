@@ -80,7 +80,7 @@ def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
     """, unsafe_allow_html=True)
 
     # derive available months from end_time
-    s = pd.to_datetime(df_scope["end_time_local"], errors="coerce")
+    s = pd.to_datetime(df_scope["end_time_local"], errors="coerce").dt.tz_convert(None)
     min_p, max_p = s.min().to_period("M"), s.max().to_period("M")
     months = []
     cur = min_p
