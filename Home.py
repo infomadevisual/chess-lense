@@ -4,6 +4,7 @@ import streamlit as st
 from utils.chesscom_downloader import ChesscomDownloader
 from utils.config import Config
 from utils.app_session import AppSession
+from utils.openings_catalog import attach_openings, load_openings_catalog
 
 session = AppSession.from_streamlit()
 
@@ -11,7 +12,11 @@ session = AppSession.from_streamlit()
 if Config.debug == True and Config.load_user != None:
     downloader = ChesscomDownloader(timeout=20.0, sleep_sec=0.2)
     session.username = Config.load_user
-    session.games_df = downloader.load_from_cache(Config.load_user,st.context.timezone)
+
+    df = downloader.load_from_cache(Config.load_user,st.context.timezone)
+    catalog = load_openings_catalog()
+
+    session.games_df = attach_openings(df, catalog)
     session.persist()
 
 # Global Styling

@@ -7,12 +7,15 @@ name = "pypi"
 pydantic = "*"
 pytz = "*"
 streamlit-javascript = "*"
+python-chess = "*"
 
 [dev-packages]
 notebook = "*"
 jupyterlab = "*"
 ipykernel = "*"
 matplotlib = "*"
+datasets = "*"
+pyarrow = "*"
 
 [requires]
 python_version = "3.13"
