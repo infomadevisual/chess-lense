@@ -10,6 +10,73 @@ st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊
 PAGE_ID = "Dashboard"
 setup_global_page(PAGE_ID)
 
+# --- NEW: helpers -------------------------------------------------------------
+# --- DAILY AGG ---------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
+    """One row per day and time_class. Keep last rating of the day."""
+    if df.empty:
+        return df
+    d = (
+        df[(df["rated"] == True)]
+        .dropna(subset=["end_time", "user_rating"])
+        .sort_values("end_time")
+        .loc[:, ["end_time", "user_rating", "opponent_rating", "time_class"]]
+        .copy()
+    )
+    d["date"] = d["end_time"].dt.normalize()
+    # last game of the day per class as rating point
+    out = (
+        d.groupby(["time_class", "date"], as_index=False)
+         .agg(user_rating=("user_rating", "last"),
+              opponent_rating=("opponent_rating", "mean"))
+    )
+    return out
+
+def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Chart:
+    d = _daily_last(df)
+    if d.empty:
+        return alt.Chart(pd.DataFrame({"date": [], "user_rating": []}))
+
+    dmin, dmax = d["date"].min(), d["date"].max()
+    n_months = (dmax.year - dmin.year) * 12 + (dmax.month - dmin.month) + 1
+    # choose monthly ticks with step based on span
+    if n_months <= 18:
+        tick = {"interval": "month", "step": 1}
+        fmt = "%b %Y"
+    elif n_months <= 48:
+        tick = {"interval": "month", "step": 3}   # quarterly ticks
+        fmt = "%b %Y"
+    else:
+        tick = {"interval": "year", "step": 1}
+        fmt = "%Y"
+
+    x = alt.X(
+        "date:T",
+        title="Date",
+        axis=alt.Axis(format=fmt, labelAngle=0, tickCount=tick, labelOverlap=False),
+        scale=alt.Scale(nice={"interval": tick["interval"], "step": tick["step"]})
+    )
+    y = alt.Y("user_rating:Q", title="Rating")
+
+    base = alt.Chart(d).properties(title=title)
+    if multi:
+        return base.mark_line().encode(
+            x=x, y=y,
+            color=alt.Color("time_class:N", title="Class",
+                            sort=["bullet","blitz","rapid","daily","classical"]),
+            tooltip=[alt.Tooltip("date:T",title="Date"),
+                     alt.Tooltip("user_rating:Q",title="Rating",format=".0f"),
+                     alt.Tooltip("time_class:N",title="Class")]
+        )
+    else:
+        return base.mark_line().encode(
+            x=x, y=y,
+            tooltip=[alt.Tooltip("date:T",title="Date"),
+                     alt.Tooltip("user_rating:Q",title="Rating",format=".0f")]
+        )
+    
+
 def _kpi(df:pd.DataFrame):
     # KPIs
     total = len(df)
@@ -31,13 +98,17 @@ def _kpi(df:pd.DataFrame):
     c5.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—")
     c6.metric("Rating Improvement", f"{rated_delta:+.0f}")
 
-def _render_viz(df: pd.DataFrame):
+def _render_viz(df: pd.DataFrame, tab_name:str, multi: bool = False):
     st.caption(f"{len(df)} games")
     if df.empty:
-        st.info("No games for this selection.")
+        st.info(f"No games for {tab_name}.")
         return
     
     _kpi(df)
+
+    # Overall rating progress (all classes)
+    chart = _rating_progress_daily(df, title=f"{tab_name} rating", multi=multi)
+    st.altair_chart(chart, use_container_width=True)
 
 
 df = load_validate_df()
@@ -47,13 +118,13 @@ df = add_header_with_slider(df, "Dashboard")
 top_labels, classes = get_time_control_tabs(df)
 top_tabs = st.tabs(top_labels)
 with top_tabs[0]:
-    _render_viz(df)
+    _render_viz(df, "All", multi=True)
 
 for i, cls in enumerate(classes, start=1):
     with top_tabs[i]:
         scope = df[df["time_class"].str.lower().fillna("unknown") == cls]
         if scope.empty:
-            st.info("No games in this class.")
+            st.info(f"No games in {cls.title()}.")
             continue
         filtered = time_filter_controls(scope, key_prefix=f"tc_{cls}")
-        _render_viz(filtered)
+        _render_viz(filtered, tab_name=cls.title(), multi=False)
