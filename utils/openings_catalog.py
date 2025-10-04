@@ -29,7 +29,7 @@ def join_openings_to_games(df: pd.DataFrame):
 
     # attach opening names if needed
     df = df.merge(
-        openings[["opening_id","eco","opening_fullname","opening_name","opening_variation","opening_moves_san_json"]],
+        openings[["opening_id","opening_fullname","opening_name","opening_variation","opening_moves_san_json"]],
         on="opening_id", how="left"
     )
 

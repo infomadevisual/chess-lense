@@ -32,10 +32,19 @@ def _render_viz(df:pd.DataFrame):
     counts["games"] = counts[["win", "draw", "loss"]].sum(axis=1)
     counts["win_rate"] = counts["win"] / counts["games"]
 
+    # Add ECO code
+    if "eco" in df.columns:
+        eco_map = (
+            df.groupby("opening_fullname")["eco"]
+            .agg(lambda x: x.mode().iat[0] if not x.mode().empty else None)
+            .reset_index()
+        )
+        counts = counts.merge(eco_map, on="opening_fullname", how="left")
+
     # Top N openings by number of games
     top_n = 10
     top = counts.sort_values("games", ascending=False).head(top_n)
-
+    
     row_height = 50
 
     chart = (
@@ -46,7 +55,7 @@ def _render_viz(df:pd.DataFrame):
                     axis=alt.Axis(labelLimit=600)),  # no truncation
             x=alt.X("games:Q", title="# Games"),
             color=alt.Color("win_rate:Q", scale=alt.Scale(scheme="blues")),
-            tooltip=["opening_fullname", "games", "win", "draw", "loss",
+            tooltip=["opening_fullname", alt.Tooltip("eco:N", title="ECO"), "games", "win", "draw", "loss", 
                     alt.Tooltip("win_rate:Q", format=".1%")]
         )
     ).properties(height=row_height * len(top), title=f"Top {top_n} openings played showing your win-rate from white (low) to blue (high)")
