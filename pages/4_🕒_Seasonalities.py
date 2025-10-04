@@ -26,7 +26,6 @@ def _render_viz(df:pd.DataFrame):
     y_axis = alt.Y("share:Q", title="Share (%)")
 
     # Hour
-    st.text(f"Hour of the day performance")
     tmp = (
         df.groupby("hour")["user_result_simple"]
         .value_counts(normalize=True)
@@ -52,11 +51,11 @@ def _render_viz(df:pd.DataFrame):
             color=color_legend,
             order=bar_order
         )
+        .properties(title="Hour of the day performance")
     )
     st.altair_chart(chart, use_container_width=True)
 
     # Weekday
-    st.text(f"Day of the week performance")
     order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
     weekday_long = (
@@ -82,12 +81,12 @@ def _render_viz(df:pd.DataFrame):
             color=color_legend,
             order=bar_order
         )
+        .properties(title="Day of the week performance")
     )
 
     st.altair_chart(chart, use_container_width=True)
 
     # Month
-    st.text(f"Month of the year performance")
     tmp = (
         df.groupby("month")["user_result_simple"]
         .value_counts(normalize=True)
@@ -113,11 +112,11 @@ def _render_viz(df:pd.DataFrame):
             color=color_legend,
             order=bar_order
         )
+        .properties(title="Month of the year performance")
     )
     st.altair_chart(chart, use_container_width=True)
         
     # Year
-    st.text(f"Yearly performance.")
     tmp = (
         df.groupby("year")["user_result_simple"]
         .value_counts(normalize=True)
@@ -143,6 +142,7 @@ def _render_viz(df:pd.DataFrame):
             color=color_legend,
             order=bar_order
         )
+        .properties(title="Yearly performance")
     )
     st.altair_chart(chart, use_container_width=True)
 

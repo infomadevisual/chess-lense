@@ -55,7 +55,6 @@ def _render_viz(df:pd.DataFrame):
 
     # Top 15 openings by number of games
     top_n = 10
-    st.text(f"Top {top_n} openings played showing your win-rate from white (low) to blue (high)")
     top = counts.sort_values("games", ascending=False).head(top_n)
     top["opening_wrapped"] = top["opening"].str.replace(" ", "\n", 2)
 
@@ -72,7 +71,7 @@ def _render_viz(df:pd.DataFrame):
             tooltip=["opening", "games", "win", "draw", "loss",
                     alt.Tooltip("win_rate:Q", format=".1%")]
         )
-    ).properties(height=row_height * len(top))
+    ).properties(height=row_height * len(top), title=f"Top {top_n} openings played showing your win-rate from white (low) to blue (high)")
 
     st.altair_chart(chart, use_container_width=True)
 
