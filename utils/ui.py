@@ -4,26 +4,25 @@ import streamlit as st
 
 from utils.app_session import AppSession
 
-def toast_once(key: str, text: str, icon:str):
-    skey = f"toast::{key}"
-    if st.session_state.get(skey) != text:
+def toast_once_page(page_id: str, key: str, text: str, icon: str = "ℹ️"):
+    """Show once per page visit regardless of identical text."""
+    v_key = f"__visit::{page_id}"
+    reg_key = f"__toast_shown::{page_id}"
+    visit = st.session_state.get(v_key, 0)
+    reg = st.session_state.setdefault(reg_key, {})
+    if reg.get(key) != visit:
         st.toast(text, icon=icon)
-        st.session_state[skey] = text
+        reg[key] = visit
 
-def load_validate_df() -> pd.DataFrame:
-    session = AppSession.from_streamlit()
-    df = session.games_df
-    if df is None or df.empty:
-        st.warning("No games loaded. Go to Home and load your games first.")
-        st.stop()
+def _set_active_page(page_id: str):
+    """Call at top of each page. Increments visit when you enter the page."""
+    ap_key = "__active_page"
+    v_key = f"__visit::{page_id}"
+    if st.session_state.get(ap_key) != page_id:
+        st.session_state[ap_key] = page_id
+        st.session_state[v_key] = st.session_state.get(v_key, 0) + 1
 
-    if session.username is None:
-        st.error("No user loaded. Go to Home and load your games first.")
-        st.stop()
-
-    return df.copy()
-
-def inject_page_styles():
+def _inject_global_page_styles():
     st.markdown(
         """
         <style>
@@ -40,6 +39,24 @@ def inject_page_styles():
         """,
         unsafe_allow_html=True
     )
+
+def setup_global_page(page_id: str):
+    _inject_global_page_styles()
+    _set_active_page(page_id)
+
+def load_validate_df() -> pd.DataFrame:
+    session = AppSession.from_streamlit()
+    df = session.games_df
+    if df is None or df.empty:
+        st.warning("No games loaded. Go to Home and load your games first.")
+        st.stop()
+
+    if session.username is None:
+        st.error("No user loaded. Go to Home and load your games first.")
+        st.stop()
+
+    return df.copy()
+
 
 def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     # counts sorted desc by default

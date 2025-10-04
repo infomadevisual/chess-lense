@@ -5,11 +5,12 @@ import streamlit as st
 from utils.chesscom_downloader import ChesscomDownloader
 from utils.config import Config
 from utils.app_session import AppSession
-from utils.ui import inject_page_styles
-
+from utils.ui import setup_global_page
 
 # ---------- Page config must be first ----------
 st.set_page_config(page_title="📥 Load games", page_icon="♟️", layout="centered")
+PAGE_ID = "Dashboard"
+setup_global_page(PAGE_ID)
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -23,7 +24,6 @@ if "ready_for_dashboard" not in st.session_state:
     st.session_state.ready_for_dashboard = False
 
 # ---------- UI helpers ----------
-inject_page_styles()
 st.header("Load games")
 
 # ---------- Session + downloader ----------

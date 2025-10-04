@@ -3,12 +3,13 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from utils.app_session import AppSession
-from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls, toast_once
+from utils.ui import add_header_with_slider, get_time_control_tabs, load_validate_df, setup_global_page, time_filter_controls, toast_once_page
 from urllib.parse import urlparse, unquote
 import re
 
 st.set_page_config(page_title="ChessCom Analyzer • Openings", page_icon="📖", layout="wide")
-inject_page_styles()
+PAGE_ID = "Openings"
+setup_global_page(PAGE_ID)
 
 def _opening_from_eco_url(url: str) -> str | None:
     if not url or not isinstance(url, str):
@@ -31,7 +32,7 @@ def _render_viz(df:pd.DataFrame):
     # after computing `missing`
     missing = int(df["opening"].isna().sum())
     if missing > 0:
-        toast_once("missing_opening", f"Ignored {missing} games without opening info.", "ℹ️")
+        toast_once_page(PAGE_ID, "missing_opening", f"Ignored {missing} games with missing opening.", "ℹ️")
 
     df = df.dropna(subset=["opening"])
 

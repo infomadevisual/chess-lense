@@ -1,13 +1,18 @@
 import streamlit as st
 import pandas as pd
 from utils.app_session import AppSession
-from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls 
+from utils.ui import add_header_with_slider, get_time_control_tabs, load_validate_df, setup_global_page, time_filter_controls, toast_once_page 
 import altair as alt
 
 st.set_page_config(page_title="Seasonality Analysis", page_icon="🕒", layout="wide")
-inject_page_styles()
+PAGE_ID = "Openings"
+setup_global_page(PAGE_ID)
 
 def _render_viz(df:pd.DataFrame):
+    missing = int(df["end_time_local"].isna().sum())
+    if missing > 0:
+        toast_once_page("missing_timestamp", f"Ignored {missing} games with missing timestamp.", "ℹ️")
+
     # ---- Add temporal columns ----
     df["year"] = df["end_time_local"].dt.year
     df["month"] = df["end_time_local"].dt.month

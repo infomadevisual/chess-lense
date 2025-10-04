@@ -4,9 +4,11 @@ import pandas as pd
 import altair as alt
 import numpy as np
 from utils.app_session import AppSession
-from utils.ui import add_header_with_slider, get_time_control_tabs, inject_page_styles, load_validate_df, time_filter_controls
+from utils.ui import add_header_with_slider, get_time_control_tabs, load_validate_df, setup_global_page, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
+PAGE_ID = "Dashboard"
+setup_global_page(PAGE_ID)
 
 def _kpi(df:pd.DataFrame):
     # KPIs
@@ -37,9 +39,6 @@ def _render_viz(df: pd.DataFrame):
     
     _kpi(df)
 
-
-
-inject_page_styles()
 
 df = load_validate_df()
 df = add_header_with_slider(df, "Dashboard")
