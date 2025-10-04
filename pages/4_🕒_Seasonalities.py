@@ -13,11 +13,11 @@ def _render_viz(df:pd.DataFrame):
     if missing > 0:
         toast_once_page("missing_timestamp", f"Ignored {missing} games with missing timestamp.", "ℹ️")
 
-    # ---- Add temporal columns ----
+    # --- derive extra columns ---
     df["year"] = df["end_time_local"].dt.year
-    df["month"] = df["end_time_local"].dt.month
-    df["weekday"] = df["end_time_local"].dt.day_name()
-    df["hour"] = df["end_time_local"].dt.hour
+    df["month"] = df["end_time_local"].dt.month          # 1–12
+    df["weekday"] = df["end_time_local"].dt.dayofweek    # 0=Mon .. 6=Sun
+    df["weekday_name"] = df["end_time_local"].dt.strftime("%A")
 
     # ---- Aggregations ----
     order_map = {"win": 0, "draw": 1, "loss": 2}
