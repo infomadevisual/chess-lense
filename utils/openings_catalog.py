@@ -1,109 +1,85 @@
-# utils/openings_catalog.py
+import numpy as np
+import re, pandas as pd, streamlit as st
+from collections import defaultdict
 
-import io, re, pandas as pd, streamlit as st
-from urllib.parse import urlparse, unquote
-import chess.pgn
-import pandas as pd
-from utils.openings_catalog import (
-    load_openings_catalog, _slug_from_eco_url, _san_prefix_from_pgn
-)
+OPENING_KEY_PLY = 32
+_rm_tags  = re.compile(r"^\[.*?\]\s*", re.MULTILINE)        # PGN headers
+_rm_notes = re.compile(r"\{[^}]*\}|\([^)]*\)")              # comments/vars
+_rm_nums  = re.compile(r"\b\d+\.(\.\.)?\b")                 # move numbers
+_rm_nags  = re.compile(r"\$\d+")                            # NAGs like $4
+_rm_syms  = re.compile(r"[+#?!]")                           # keep 'x' captures
 
-_rm_nums = re.compile(r"\d+\.(\.\.)?")
-_rm_syms = re.compile(r"[+#?!x]")
+def _norm_castling(tok: str) -> str:
+    t = tok.replace("0-0-0", "O-O-O").replace("0-0", "O-O") # unify zeros to O
+    return t
 
-def _moves_key(s: str, max_ply: int = 12) -> str:
-    if not isinstance(s, str):
+def san_key(text: str, n: int = OPENING_KEY_PLY) -> str:
+    if not isinstance(text, str) or not text.strip():
         return ""
-    s = _rm_nums.sub("", s)
-    toks = [_rm_syms.sub("", t).strip().lower()
-            for t in s.split() if t and t not in {"1-0","0-1","1/2-1/2","*"}]
-    return " ".join(toks[:max_ply])
+    s = _rm_tags.sub(" ", text)
+    s = _rm_notes.sub(" ", s)
+    s = _rm_nags.sub(" ", s)
+    s = _rm_nums.sub(" ", s)
+    toks = s.split()
+    out = []
+    for t in toks:
+        if t in {"1-0","0-1","1/2-1/2","*"}: 
+            continue
+        t = _norm_castling(t)
+        t = _rm_syms.sub("", t).strip().lower()
+        if t:
+            out.append(t)
+        if len(out) >= n:
+            break
+    return " ".join(out)
 
-def _slug_from_eco_url(eco_url) -> str:
-    if eco_url is None or pd.isna(eco_url):
-        return ""
-    s = str(eco_url).strip()
-    if not s:
-        return ""
-    last = unquote(urlparse(s).path).strip("/").split("/")[-1]
-    return re.split(r"-\d+\.", last, maxsplit=1)[0].lower()
-
-def _san_prefix_from_pgn(pgn_text, max_ply: int = 12) -> str:
-    if pgn_text is None or pd.isna(pgn_text):
-        return ""
-    g = chess.pgn.read_game(io.StringIO(str(pgn_text)))
-    if g is None:
-        return ""
-    toks, node = [], g
-    while node.variations and len(toks) < max_ply:
-        node = node.variations[0]
-        toks.append(_rm_syms.sub("", node.san()).lower())
-    return " ".join(toks)
-
-def load_openings_catalog(path: str = "data/openings.parquet") -> pd.DataFrame:
+@st.cache_data(show_spinner=False)
+def load_openings_catalog(path="data/openings.parquet") -> pd.DataFrame:
     cat = pd.read_parquet(path)
+    cat.columns = [c.lower() for c in cat.columns]
+    def s(df,col): 
+        return df[col].fillna("").astype(str) if col in df.columns else pd.Series([""]*len(df), index=df.index, dtype="string")
+    cat["eco"]  = s(cat,"eco").str.upper()
+    cat["name"] = s(cat,"name")
+    cat["pgn"]  = s(cat,"pgn")
+    # split name
+    sp = cat["name"].str.split(":", n=1, expand=True)
+    cat["opening_name"] = sp[0].str.strip()
+    cat["variation"]    = sp[1].fillna("").str.strip()
+    # key + ids
+    cat["open_key"] = cat["pgn"].map(lambda x: san_key(x, OPENING_KEY_PLY))
+    keys = cat[["open_key"]].drop_duplicates().reset_index(drop=True)
+    keys["opening_id"] = keys.index.astype("int32")
+    cat = cat.merge(keys, on="open_key", how="left")
+    return cat[["opening_id","open_key","eco","opening_name","variation","pgn","eco-volume"]].drop_duplicates()
 
-    # normalize
-    cat["eco"] = cat["eco"].astype(str).str.upper()
-    cat["name"] = cat["name"].astype(str)
-    cat["variation"] = (cat["variation"].fillna("").astype(str)
-                        if "variation" in cat.columns
-                        else pd.Series([""] * len(cat), index=cat.index, dtype="string"))
-    cat["moves"] = (cat["moves"].fillna("").astype(str)
-                    if "moves" in cat.columns
-                    else pd.Series([""] * len(cat), index=cat.index, dtype="string"))
+def ensure_series(df: pd.DataFrame, col: str) -> pd.Series:
+    return df[col] if col in df.columns else pd.Series([""]*len(df), index=df.index, dtype="string")
 
-    cat["moves_key12"] = cat["moves"].map(lambda s: _moves_key(s, 12))
-    cat["slug"] = (cat["name"] + " " + cat["variation"].where(cat["variation"] != "", ""))
-    cat["slug"] = (cat["slug"].str.strip().str.lower()
-                   .str.replace(r"[^a-z0-9]+", "-", regex=True).str.strip("-"))
+def build_prefix_map(
+    cat: pd.DataFrame,
+    key_col: str = "open_key",
+    id_col: str = "opening_id"
+) -> dict[str, int]:
+    keys = cat[key_col].astype(str).to_numpy()
+    ids  = cat[id_col].astype(int).to_numpy()
 
-    # keep clean names (no prefixes)
-    return cat[["eco", "name", "variation", "moves", "moves_key12", "slug"]].drop_duplicates()
+    scores = defaultdict(lambda: defaultdict(float))
+    for k, oid in zip(keys, ids):
+        toks = k.split()
+        upto = min(len(toks), OPENING_KEY_PLY)
+        for i in range(1, upto + 1):
+            pref = " ".join(toks[:i])
+            scores[pref][oid] += 1.0
 
+    return {p: max(d.items(), key=lambda kv: kv[1])[0] for p, d in scores.items()}
 
-def attach_openings(games: pd.DataFrame, catalog: pd.DataFrame | None = None) -> pd.DataFrame:
-    if games is None or games.empty: return games
-    cat = catalog if catalog is not None else load_openings_catalog()
-    out = games.copy()
-
-    def _series(df: pd.DataFrame, col: str) -> pd.Series:
-        return df[col] if col in df.columns else pd.Series([""] * len(df), index=df.index, dtype="string")
-
-    eco_url_s = _series(out, "eco_url").astype("object").fillna("")
-    pgn_s     = _series(out, "pgn").astype("object").fillna("")
-
-    out["eco_slug"]    = eco_url_s.map(_slug_from_eco_url)
-    out["moves_key12"] = pgn_s.map(lambda s: _san_prefix_from_pgn(s, 12))
-
-    # Build lookups
-    cat_lu = cat.rename(columns={
-        "eco":"cat_eco","name":"cat_name","moves":"cat_moves",
-        "moves_key12":"cat_moves_key12","slug":"cat_slug"
-    })
-    by_moves = (cat_lu.dropna(subset=["cat_moves_key12"])
-                      .drop_duplicates("cat_moves_key12")
-                      .set_index("cat_moves_key12"))
-    by_slug  = (cat_lu.dropna(subset=["cat_slug"])
-                      .drop_duplicates("cat_slug")
-                      .set_index("cat_slug"))
-
-    # 1) primary: moves
-    out["cat_eco"]   = out["moves_key12"].map(by_moves["cat_eco"])
-    out["cat_name"]  = out["moves_key12"].map(by_moves["cat_name"])
-    out["cat_moves"] = out["moves_key12"].map(by_moves["cat_moves"])
-
-    # 2) fallback: slug from chess.com URL
-    miss = out["cat_name"].isna()
-    if miss.any():
-        out.loc[miss, "cat_eco"]   = out.loc[miss, "eco_slug"].map(by_slug["cat_eco"])
-        out.loc[miss, "cat_name"]  = out.loc[miss, "eco_slug"].map(by_slug["cat_name"])
-        out.loc[miss, "cat_moves"] = out.loc[miss, "eco_slug"].map(by_slug["cat_moves"])
-
-    # Final columns
-    out["opening_eco"]   = out["cat_eco"]
-    out["opening_name"]  = out["cat_name"]
-    out["opening_moves"] = out["cat_moves"]
-
-    return out.drop(columns=["cat_eco","cat_name","cat_moves","eco_slug","moves_key12"])
-
+def resolve_opening_id(open_key: str, prefix_to_id: dict[str,int]) -> int | None:
+    if not isinstance(open_key, str) or not open_key:
+        return None
+    toks = open_key.split()
+    for i in range(len(toks), 0, -1):              # longest → shortest
+        oid = prefix_to_id.get(" ".join(toks[:i]))
+        if oid is not None:
+            return oid
+    return None

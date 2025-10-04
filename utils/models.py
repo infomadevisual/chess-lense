@@ -83,7 +83,7 @@ class GameRow(BaseModel):
     time_label: Optional[str] = None
     initial_setup_fen: Optional[str] = None
     game_url: Optional[str] = None
-    pgn_url: Optional[str] = None
+    pgn: Optional[str] = None
     eco_url: Optional[str] = None
     tournament_url: Optional[str] = None
 
@@ -127,7 +127,7 @@ class GameRow(BaseModel):
             game_url=g.url,
             eco_url=g.eco,
             tournament_url=g.tournament,
-            pgn_url=g.pgn,
+            pgn=g.pgn,
         )
     
     @staticmethod
