@@ -10,12 +10,8 @@ st.set_page_config(page_title="ChessCom Analyzer • Openings", page_icon="📖"
 PAGE_ID = "Openings"
 setup_global_page(PAGE_ID)
 
-def _render_viz(df:pd.DataFrame):
-    
-    missing = int(df["opening_fullname"].isna().sum())
-    if missing > 0:
-        toast_once_page(PAGE_ID, "missing_opening", f"Ignored {missing} games with missing opening.", "ℹ️")
 
+def _counts_by_opening(df: pd.DataFrame) -> pd.DataFrame:
     # Count openings
     counts = (
         df.groupby("opening_fullname")["user_result_simple"]
@@ -24,15 +20,13 @@ def _render_viz(df:pd.DataFrame):
         .reindex(columns=["win", "draw", "loss"], fill_value=0)
         .reset_index()
     )
-
     if counts.empty:
-        st.warning("No data available for the selected filters.")
-        st.stop()
-    
+        return counts
+
     counts["games"] = counts[["win", "draw", "loss"]].sum(axis=1)
     counts["win_rate"] = counts["win"] / counts["games"]
 
-    # Add ECO code
+    # ECO (optional)
     if "eco" in df.columns:
         eco_map = (
             df.groupby("opening_fullname")["eco"]
@@ -40,32 +34,71 @@ def _render_viz(df:pd.DataFrame):
             .reset_index()
         )
         counts = counts.merge(eco_map, on="opening_fullname", how="left")
+    return counts
 
-    # Top N openings by number of games
-    top_n = 10
+
+def _chart_top(counts: pd.DataFrame, title_prefix: str, top_n: int = 10):
     top = counts.sort_values("games", ascending=False).head(top_n)
-    
     row_height = 50
-
     chart = (
         alt.Chart(top)
         .mark_bar()
         .encode(
             y=alt.Y("opening_fullname:N", sort="-x", title=None,
-                    axis=alt.Axis(labelLimit=600)),  # no truncation
+                    axis=alt.Axis(labelLimit=600)),
             x=alt.X("games:Q", title="# Games"),
             color=alt.Color("win_rate:Q", scale=alt.Scale(scheme="blues")),
-            tooltip=["opening_fullname", alt.Tooltip("eco:N", title="ECO"), "games", "win", "draw", "loss", 
-                    alt.Tooltip("win_rate:Q", format=".1%")]
+            tooltip=[
+                "opening_fullname",
+                alt.Tooltip("eco:N", title="ECO"),
+                "games","win","draw","loss",
+                alt.Tooltip("win_rate:Q", format=".1%")
+            ],
         )
-    ).properties(height=row_height * len(top), title=f"Top {top_n} openings played showing your win-rate from white (low) to blue (high)")
+    ).properties(
+        height=row_height * len(top),
+        title=f"{title_prefix}: Top {top_n} openings (win-rate color)"
+    )
+    return chart
 
-    st.altair_chart(chart, use_container_width=True)
 
-    top_n = 100
-    st.text(f"Top {top_n} openings played and win-rate")
-    cols = ["opening_fullname", "games", "win_rate", "win", "draw", "loss"]  # desired order
-    st.dataframe(counts[cols].sort_values("games", ascending=False).head(top_n))
+def _render_viz(df: pd.DataFrame):
+    # info toast once
+    missing = int(df["opening_fullname"].isna().sum())
+    if missing > 0:
+        toast_once_page(PAGE_ID, "missing_opening", f"Ignored {missing} games with missing opening.", "ℹ️")
+    df = df.dropna(subset=["opening_fullname"])
+
+    # split by color
+    is_white = df["user_played_as"].str.lower().eq("white")
+    is_black = df["user_played_as"].str.lower().eq("black")
+
+    w_counts = _counts_by_opening(df[is_white])
+    b_counts = _counts_by_opening(df[is_black])
+
+    if w_counts.empty and b_counts.empty:
+        st.warning("No data available for the selected filters.")
+        st.stop()
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if w_counts.empty:
+            st.info("No games as White.")
+        else:
+            st.altair_chart(_chart_top(w_counts, "White"), use_container_width=True)
+            st.text("White — Top 100 openings")
+            cols = ["opening_fullname","games","win_rate","win","draw","loss"]
+            st.dataframe(w_counts[cols].sort_values("games", ascending=False).head(100))
+
+    with c2:
+        if b_counts.empty:
+            st.info("No games as Black.")
+        else:
+            st.altair_chart(_chart_top(b_counts, "Black"), use_container_width=True)
+            st.text("Black — Top 100 openings")
+            cols = ["opening_fullname","games","win_rate","win","draw","loss"]
+            st.dataframe(b_counts[cols].sort_values("games", ascending=False).head(100))
+
 
 # ---- Load Data and Apply filters ----
 df = load_validate_df()
