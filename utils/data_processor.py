@@ -2,7 +2,6 @@ from typing import Literal
 import pandas as pd
 import streamlit as st
 
-@st.cache_data
 def counts_by_opening(df: pd.DataFrame, merge_column: Literal["opening_name", "opening_fullname"], player_color: Literal["white", "black"]) -> pd.DataFrame:
     color = df["user_played_as"].str.lower().eq(player_color)
     counts = (

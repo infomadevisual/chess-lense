@@ -95,29 +95,52 @@ def add_header_with_slider(df_scope: pd.DataFrame, header_title:str) -> pd.DataF
 def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
     st.markdown("""
     <style>
-    div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) {
-        padding-top: 3rem;
-    }
+    div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) { padding-top: 3rem; }
     </style>
     """, unsafe_allow_html=True)
 
-    # derive available months from end_time
-    s = pd.to_datetime(df_scope["end_time_local"], errors="coerce").dt.tz_convert(None)
-    min_p, max_p = s.min().to_period("M"), s.max().to_period("M")
-    months = []
+    # parse times
+    s_local = pd.to_datetime(df_scope["end_time_local"], errors="coerce").dt.tz_convert(None)
+    if s_local.dropna().empty:
+        return df_scope.copy()
+
+    min_p, max_p = s_local.min().to_period("M"), s_local.max().to_period("M")
+    months: list[pd.Period] = []
     cur = min_p
     while cur <= max_p:
         months.append(cur)
         cur += 1
+
     labels = [p.strftime("%Y-%m") for p in months]
+    end_idx = len(labels) - 1
+
+    # timestamps for filtering
+    t = pd.to_datetime(df_scope["end_time"], errors="coerce", utc=True)
+
+    def _count(si: int, ei: int) -> int:
+        start_ts = months[si].to_timestamp(how="start").tz_localize("UTC")
+        end_ts   = (months[ei] + 1).to_timestamp(how="start").tz_localize("UTC")
+        mask = (t >= start_ts) & (t < end_ts)
+        return int(mask.sum())
+
+    # start with latest 12 months, then widen by 12 until >=1000 games or full range
+    start_idx = max(0, end_idx - 11)
+    while _count(start_idx, end_idx) < 1000 and start_idx > 0:
+        start_idx = max(0, start_idx - 12)
+
+    default_range = (labels[start_idx], labels[end_idx])
+
     start_lbl, end_lbl = st.select_slider(
-        "Range", options=labels, value=(labels[0], labels[-1]),
-        key="month_slider", label_visibility="collapsed",
+        "Range",
+        options=labels,
+        value=default_range,
+        key="month_slider",
+        label_visibility="collapsed",
     )
+
     start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
     start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
     end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
-    t = pd.to_datetime(df_scope["end_time"], errors="coerce", utc=True)
     return df_scope[(t >= start_ts) & (t < end_ts)].copy()
 
 def _order_classes(classes):

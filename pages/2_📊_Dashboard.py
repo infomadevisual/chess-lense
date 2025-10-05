@@ -12,7 +12,6 @@ st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊
 PAGE_ID = "Dashboard"
 setup_global_page(PAGE_ID)
 
-@st.cache_data(show_spinner=False)
 def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
