@@ -1,5 +1,5 @@
 # dashboard_checkboxes.py
-from typing import Any, Literal
+from typing import Any, Literal, Optional, Tuple
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -25,21 +25,33 @@ def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
               .agg(user_rating=("user_rating", "last"),
                    opponent_rating=("opponent_rating", "mean")))
 
-def get_best_worst_openings(counts_df: pd.DataFrame):
-    w_counts_min = counts_df[counts_df["games"] >= 20]
-    if w_counts_min.empty:
-        # fallback: allow openings with at least 10 games
-        w_counts_min = counts_df[counts_df["games"] >= 10]
-    if w_counts_min.empty:
-        w_counts_min = counts_df
-
-    if w_counts_min.empty:
+def get_best_worst_openings(counts_df: pd.DataFrame) -> Optional[Tuple[pd.Series, pd.Series]]:
+    if counts_df is None or counts_df.empty:
         return None
-    
-    best = w_counts_min.sort_values(["win_rate", "games"], ascending=[False, False]).iloc[0]
-    worst = w_counts_min.sort_values(["win_rate", "games"], ascending=[True, False]).iloc[0]
-    return (best, worst)
 
+    df = counts_df.copy()
+
+    # Ensure required metrics exist
+    if "games" not in df.columns:
+        df["games"] = df.get("win", 0) + df.get("draw", 0) + df.get("loss", 0)
+
+    if "win_rate" not in df.columns:
+        # avoid division by zero
+        denom = df["games"].replace({0: np.nan})
+        df["win_rate"] = df.get("win", 0) / denom
+        df["win_rate"] = df["win_rate"].fillna(0.0)
+
+    # Filter with fallback
+    scope = df[df["games"] >= 20]
+    if scope.empty:
+        scope = df[df["games"] >= 10]
+    if scope.empty:
+        scope = df
+
+    # Pick best and worst
+    best = scope.sort_values(["win_rate", "games"], ascending=[False, False]).iloc[0]
+    worst = scope.sort_values(["win_rate", "games"], ascending=[True, False]).iloc[0]
+    return best, worst
 
 def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Chart | None:
     d = _daily_last(df)
