@@ -119,10 +119,9 @@ class ChesscomDownloader:
 
         # Reload archive list if older than 24 hours
         if idx.archives_list.is_update_needed():
-            etag = idx.archives_list.etag
             headers = dict(self.base_headers)
-            if etag:
-                headers["If-None-Match"] = etag
+            if idx.archives_list.etag:
+                headers["If-None-Match"] = idx.archives_list.etag
 
             try:
                 r = self.sess.get(self.archives_url, headers=headers, timeout=self.timeout)
@@ -143,12 +142,11 @@ class ChesscomDownloader:
                     logger.info(f"304 - archives not modified for {self.username}")
                 if r.status_code == 404:
                     logger.warning(f"404 - user not found: {self.username}")
-                logger.warning(f"archives non-200: {r.status_code}")
+                
+                idx.archives_list.updated_on = datetime.now().isoformat()
+
             except requests.RequestException as e:
                 logger.exception(f"archives error: {e}")
-
-
-        df = self._read_parquet()
 
         # Iterate over each archive and check whether it needs update (only updated every 24 hours with etag)
         rows: list[GameRow] = []
@@ -166,6 +164,7 @@ class ChesscomDownloader:
             games = archive.games
 
             rows.extend(GameRow.from_game(g, self.username) for g in games)
+            archive_idx.updated_on = datetime.now().isoformat()
             if progress_cb: progress_cb(i, total_archives)
 
         # Build dataframe of updated games
@@ -179,6 +178,7 @@ class ChesscomDownloader:
             new_df = pd.DataFrame()
 
         # Merge with existing parquet
+        df = self._read_parquet()
         if df is None:
             df_final = new_df
         else:
@@ -193,7 +193,8 @@ class ChesscomDownloader:
                 if "game_url" in df_final.columns:
                     df_final = df_final.sort_values("end_time").drop_duplicates("game_url", keep="last")
 
-        # Persist Parquet
+        # Persist Parquet & Index
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         if df_final is not None and not df_final.empty:
             df_final.to_parquet(self.games_path, index=False)
 

@@ -1,4 +1,3 @@
-import logging
 import streamlit as st
 
 from utils.chesscom_downloader import ChesscomDownloader
@@ -9,10 +8,8 @@ session = AppSession.from_streamlit()
 
 # Debug Loader
 if Config.debug == True and Config.load_user != None:
-    downloader = ChesscomDownloader(timeout=20.0, sleep_sec=0.2)
     session.username = Config.load_user
-
-    df = downloader.load_from_cache(Config.load_user,st.context.timezone)
+    df = ChesscomDownloader(timeout=20.0, sleep_sec=0.2, username=Config.load_user,timezone=st.context.timezone).load_from_cache()
     session.games_df = df
     session.persist()
 

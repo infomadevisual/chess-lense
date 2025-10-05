@@ -10,6 +10,8 @@ KEY_USERNAME = "cc_username"
 KEY_DF = "games_df"
 # Centralized keys
 class AppSession(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     username: Optional[str] = None
     games_df: pd.DataFrame = pd.DataFrame()
 
