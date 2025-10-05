@@ -1,7 +1,4 @@
 import json
-import numpy as np
-import streamlit as st
-from collections import defaultdict
 import re
 import pandas as pd
 from typing import Dict, Tuple, Optional, List
@@ -19,17 +16,10 @@ def join_openings_to_games(df: pd.DataFrame):
 
     matches = df["moves_san_json"].apply(lambda x: _match_exact_longest(x, idx, max_key_len))
     df["opening_id"], df["matched_plies"] = zip(*matches)
-    df["matched_fullmove"] = (df["matched_plies"] + 1) // 2
-
-    # optional debug: store matched sequence
-    df["matched_prefix_json"] = df.apply(
-        lambda r: json.dumps(_ensure_list(r["moves_san_json"])[: int(r["matched_plies"]) ])
-        , axis=1
-    )
 
     # attach opening names if needed
     df = df.merge(
-        openings[["opening_id","opening_fullname","opening_name","opening_variation","opening_moves_san_json"]],
+        openings[["opening_id","opening_name","opening_variation","opening_fullname","opening_moves_san_json"]],
         on="opening_id", how="left"
     )
 
@@ -121,4 +111,4 @@ def _load_openings_catalog(path="data/openings.parquet") -> pd.DataFrame:
 
     # key + ids
     cat["opening_id"] = cat.index.astype("int32")
-    return cat[["opening_id","eco","opening_fullname","opening_name","opening_variation","opening_moves_san_json"]].drop_duplicates()
+    return cat[["opening_id","eco","opening_name","opening_variation","opening_fullname","opening_moves_san_json"]].drop_duplicates()

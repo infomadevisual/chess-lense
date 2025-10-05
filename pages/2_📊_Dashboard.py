@@ -1,9 +1,11 @@
 # dashboard_checkboxes.py
+from typing import Any, Literal
 import streamlit as st
 import pandas as pd
 import altair as alt
 import numpy as np
 from utils.app_session import AppSession
+from utils.data_processor import counts_by_opening
 from utils.ui import add_header_with_slider, get_time_control_tabs, load_validate_df, setup_global_page, time_filter_controls
 
 st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
@@ -23,6 +25,22 @@ def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
     return (d.groupby(["time_class", "date"], as_index=False)
               .agg(user_rating=("user_rating", "last"),
                    opponent_rating=("opponent_rating", "mean")))
+
+def get_best_worst_openings(counts_df: pd.DataFrame):
+    w_counts_min = counts_df[counts_df["games"] >= 20]
+    if w_counts_min.empty:
+        # fallback: allow openings with at least 10 games
+        w_counts_min = counts_df[counts_df["games"] >= 10]
+    if w_counts_min.empty:
+        w_counts_min = counts_df
+
+    if w_counts_min.empty:
+        return None
+    
+    best = w_counts_min.sort_values(["win_rate", "games"], ascending=[False, False]).iloc[0]
+    worst = w_counts_min.sort_values(["win_rate", "games"], ascending=[True, False]).iloc[0]
+    return (best, worst)
+
 
 def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Chart | None:
     d = _daily_last(df)
@@ -76,18 +94,45 @@ def _kpi(df:pd.DataFrame):
     rated_delta = (rated["user_rating"].iloc[-1] - rated["user_rating"].iloc[0]) if len(rated) >= 2 else 0
 
     c1,c2,c3,c4,c5,c6 = st.columns(6)
-    c1.metric("Games", len(df))
-    c2.metric("Win-rate", f"{win_rate:.0%}")
-    c3.metric("Draw-rate", f"{draw_rate:.0%}")
-    c4.metric("Loss-rate", f"{loss_rate:.0%}")
-    c5.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—")
-    c6.metric("Rating Improvement", f"{rated_delta:+.0f}")
+    c1.metric("Games", len(df), border=True)
+    c2.metric("Win-rate", f"{win_rate:.0%}", border=True)
+    c3.metric("Draw-rate", f"{draw_rate:.0%}", border=True)
+    c4.metric("Loss-rate", f"{loss_rate:.0%}", border=True)
+    c5.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—", border=True)
+    c6.metric("Rating Improvement", f"{rated_delta:+.0f}", border=True)
+
+def show_opening_kpis(label: str, data):
+    if data is None:
+        st.warning(f"No openings as {label}")
+        return
+
+    def get_metric(row, best_or_worst: Literal["Best", "Worst"]):
+        return st.metric(
+            width="stretch",
+            label=f"{best_or_worst} Opening for {label} ({row.games} games and {row.win_rate*100:.1f}% win-rate)",
+            value=f"{row.opening_name}",
+            help=f"With a minimum of 20/10/1 games depending on availability (# games: {row.games})",
+            border=True
+        )
+
+    best, worst = data
+    c1, c2 = st.columns(2)
+    with c1:
+        get_metric(best, "Best")
+    with c2:
+        get_metric(worst, "Worst")
+
 
 def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
     if df.empty:
         st.info(f"No games in this selection ({tab_name})."); return
 
     _kpi(df)
+
+    w_counts = counts_by_opening(df, "opening_name", "white")
+    b_counts = counts_by_opening(df, "opening_name", "black")
+    show_opening_kpis("White", get_best_worst_openings(w_counts))
+    show_opening_kpis("Black", get_best_worst_openings(b_counts))
 
     chart = _rating_progress_daily(df, title=f"{tab_name} rating", multi=multi)
     if chart is None:
