@@ -68,7 +68,7 @@ Your ideas help shape **chess.com Analyzer**.
 If you have suggestions, bug reports, or feature requests:
 
 - 📬 **Email:** [infomadevisual@gmail.com](mailto:infomadevisual@gmail.com)
-- 🐙 **GitHub Issues:** [github.com/yourusername/chess-com-streamlit/issues](https://github.com/yourusername/chess-com-streamlit/issues)
+- 🐙 **GitHub Issues:** [https://github.com/infomadevisual/chess-com-streamlit/issues](https://github.com/infomadevisual/chess-com-streamlit/issues)
 
 Whether it's a new visualization, a missing stat, or an idea for improvement — I'd love to hear from you.
 """
