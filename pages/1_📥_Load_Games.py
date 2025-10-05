@@ -28,7 +28,6 @@ st.header("Load games")
 
 # ---------- Session + downloader ----------
 session = AppSession.from_streamlit()
-downloader = ChesscomDownloader(timeout=20.0, sleep_sec=0.2)
 
 if session.game_count > 0:
     st.success(f"Loaded {session.game_count} games from {session.username}.")
@@ -87,10 +86,11 @@ if submit:
             frac = 0.0 if total == 0 else i / total
             prog.progress(frac, text=f"{i}/{total} months loaded")
 
+        downloader = ChesscomDownloader(timeout=20.0, sleep_sec=0.2, username=session.username, timezone=st.context.timezone)
         if not Config.debug:
-            df = downloader.download_all(session.username, st.context.timezone, progress_cb=update_progress)
+            df = downloader.download_all(progress_cb=update_progress)
         else:
-            df = downloader.load_from_cache(session.username,st.context.timezone)
+            df = downloader.load_from_cache()
 
     prog.empty()
 
