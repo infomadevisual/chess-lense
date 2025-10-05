@@ -60,16 +60,16 @@ def _render_viz(df:pd.DataFrame):
     order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
     weekday_long = (
-        df.groupby("weekday")["user_result_simple"]
+        df.groupby("weekday_name")["user_result_simple"]
         .value_counts(normalize=True)
         .rename("share")
         .reset_index()
     )
-    weekday_long["weekday"] = pd.Categorical(weekday_long["weekday"], categories=order, ordered=True)
-    weekday_long = weekday_long.sort_values("weekday")
-    counts = df.groupby("weekday").size().rename("n").reset_index()
-    weekday_long = weekday_long.merge(counts, on="weekday", how="left")
-    weekday_long["label"] = weekday_long["weekday"].astype(str) + " (" + weekday_long["n"].astype(str) + ")"
+    weekday_long["weekday_name"] = pd.Categorical(weekday_long["weekday_name"], categories=order, ordered=True)
+    weekday_long = weekday_long.sort_values("weekday_name")
+    counts = df.groupby("weekday_name").size().rename("n").reset_index()
+    weekday_long = weekday_long.merge(counts, on="weekday_name", how="left")
+    weekday_long["label"] = weekday_long["weekday_name"].astype(str) + " (" + weekday_long["n"].astype(str) + ")"
     weekday_long["share"] = weekday_long["share"] * 100
     weekday_long["order_key"] = weekday_long["user_result_simple"].map(order_map)
 
