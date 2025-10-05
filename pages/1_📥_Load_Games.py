@@ -80,7 +80,7 @@ if submit:
     session.username = username_input.strip().lower()
 
     with st.spinner("Loading games..."):
-        prog = st.progress(0.0, text="Initializing download")
+        prog = st.progress(0.0, text="Initializing...")
 
         def update_progress(i, total):
             frac = 0.0 if total == 0 else i / total
