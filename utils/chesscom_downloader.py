@@ -67,11 +67,7 @@ class ChesscomDownloader:
         cdir = self._ensure_user_dir(username)
         idx = self._load_index(cdir)
 
-        # Profile/Stats
-        self.fetch_profile(username, cdir, idx)
-        self.fetch_stats(username, cdir, idx)
-
-        archives = self.list_archives(username)
+        archives = self._list_archives(username)
 
         # 1) Load parquet
         df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
@@ -126,34 +122,10 @@ class ChesscomDownloader:
         if df_final is not None and not df_final.empty:
             df_final.to_parquet(dfp, index=False)
 
-        self._save_index(cdir, idx)
+        (cdir / "index.json").write_text(idx.model_dump_json(indent=2), encoding="utf-8")
         return self.load_from_cache(username,timezone)
 
-    def fetch_profile(self, username: str, cache_dir: Path, idx: IndexModel) -> Optional[ProfileModel]:
-        url = f"https://api.chess.com/pub/player/{username}"
-        data = self._fetch_conditional_json(url, idx.profile)
-        if not data:
-            return None
-        prof = ProfileModel.model_validate(data)
-        p = cache_dir / "profile.json"
-        p.write_text(ProfileModel.model_dump_json(prof, indent=2), encoding="utf-8")
-        idx.profile.path = str(p)
-        self._save_index(cache_dir, idx)
-        return prof
-
-    def fetch_stats(self, username: str, cache_dir: Path, idx: IndexModel) -> Optional[StatsModel]:
-        url = f"https://api.chess.com/pub/player/{username}/stats"
-        data = self._fetch_conditional_json(url, idx.stats)
-        if not data:
-            return None
-        stats = StatsModel(raw=data)
-        p = cache_dir / "stats.json"
-        p.write_text(stats.model_dump_json(indent=2), encoding="utf-8")
-        idx.stats.path = str(p)
-        self._save_index(cache_dir, idx)
-        return stats
-
-    def list_archives(self, username: str) -> List[str]:
+    def _list_archives(self, username: str) -> List[str]:
         url = f"https://api.chess.com/pub/player/{username}/games/archives"
         try:
             r = self.sess.get(url, headers=self.base_headers, timeout=self.timeout)
@@ -170,7 +142,7 @@ class ChesscomDownloader:
         return []
 
     # ---- internals ----
-    def fast_san_from_pgn(self, pgn_text: str) -> list[str]:
+    def _fast_san_from_pgn(self, pgn_text: str) -> list[str]:
         if not pgn_text:
             return []
         s = _TAGS.sub("", pgn_text)         # drop header
@@ -186,7 +158,7 @@ class ChesscomDownloader:
         return [t for t in toks if t and t not in ["+", "#"]]
 
     def _parse_pgn_min_fast(self, pgn_text: str) -> dict:
-        sans = self.fast_san_from_pgn(pgn_text)
+        sans = self._fast_san_from_pgn(pgn_text)
         # clocks straight from text; no parsing tree needed
         clocks = re.findall(r"%clk\s+([0-9:.\-]+)", pgn_text)
         # ECO header without full parse
@@ -241,40 +213,6 @@ class ChesscomDownloader:
         logger.info(f"HTTP {len(archive.games)} games from {url}")
         return archive.games
 
-    def fetch_month_games(self, url: str, cache_dir: Path, idx: IndexModel) -> List[GameModel]:
-        y, m = self._parse_ym_from_url(url)
-        month_key = f"{y}-{m:02d}"
-        p = cache_dir / "archives" / f"{month_key}.json"
-
-        entry = idx.get_or_create_archive(url)
-
-        # 1) Historische Monate: direkt aus Datei, kein HTTP
-        if not self._is_current_month(y, m) and p.exists():
-            logger.info(f"LOAD-CACHE {month_key} (historical)")
-            entry.node.path = str(p)
-            try:
-                return MonthArchive.model_validate_json(p.read_text(encoding="utf-8")).games
-            except Exception as e:
-                logger.warning(f"Cache read failed {p}: {e} -> fallback to HTTP")
-
-        # 2) Aktueller Monat ODER Cache fehlt: Conditional GET
-        data = self._fetch_conditional_json(url, entry.node)
-        if not data:
-            # 304 oder Fehler -> falls Datei existiert, daraus laden
-            if p.exists():
-                try:
-                    return MonthArchive.model_validate_json(p.read_text(encoding="utf-8")).games
-                except Exception as e:
-                    logger.error(f"Fallback cache read failed {p}: {e}")
-            return []
-
-        archive = MonthArchive.model_validate(data)
-        p.write_text(archive.model_dump_json(indent=2), encoding="utf-8")
-        entry.node.path = str(p)
-        self._save_index(cache_dir, idx)
-        logger.info(f"{len(archive.games)} games in {month_key}")
-        return archive.games
-    
     def _ensure_user_dir(self, username: str) -> Path:
         p = self.cache_root / username
         p.mkdir(parents=True, exist_ok=True)
@@ -289,9 +227,6 @@ class ChesscomDownloader:
             except Exception:
                 logger.warning("index corrupt -> recreate")
         return IndexModel()
-
-    def _save_index(self, cache_dir: Path, idx: IndexModel) -> None:
-        (cache_dir / "index.json").write_text(idx.model_dump_json(indent=2), encoding="utf-8")
 
     def _fetch_conditional_json(self, url: str, node: CacheNode) -> Optional[dict]:
         headers = dict(self.base_headers)

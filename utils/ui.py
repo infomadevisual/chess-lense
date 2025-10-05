@@ -48,11 +48,11 @@ def load_validate_df() -> pd.DataFrame:
     session = AppSession.from_streamlit()
     df = session.games_df
     if df is None or df.empty:
-        st.warning("No games loaded. Go to Home and load your games first.")
+        st.warning("No games loaded. Go to 📥Load Games and load your games first.")
         st.stop()
 
     if session.username is None:
-        st.error("No user loaded. Go to Home and load your games first.")
+        st.error("No user loaded. Go to 📥Load Games and load your games first.")
         st.stop()
 
     return df.copy()
