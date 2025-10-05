@@ -71,7 +71,7 @@ def _render_viz(df: pd.DataFrame, column_name:Literal["opening_fullname", "openi
 def _get_radio_option(key_prefix:str):
     # ---- Select level of detail ----
     option = st.radio(
-        "",
+        "Opening Filter",
         key=f"{key_prefix}_opening_radio",
         label_visibility="collapsed",
         options=["Openings only", "Openings with Variations"],
