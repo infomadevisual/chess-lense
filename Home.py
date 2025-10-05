@@ -31,16 +31,16 @@ st.markdown(
 
 # Page Setup
 st.set_page_config(
-    page_title="chess.com Analyzer • Home",
+    page_title="Chess Lense • Home",
     page_icon="♟️",
     layout="centered",
 )
 
-st.title("♟️ chess.com Analyzer")
-st.subheader("Analyze your chess.com games like never before")
+st.title("♟️ Chess Lense")
+st.subheader("Analyze your chess games like never before")
 st.markdown(
     """
-Welcome to **chess.com Analyzer** — your personal analysis for deep insights into your chess games.
+Welcome to **Chess Lense** — your personal analysis for deep insights into your chess games.
 Current features:
 - 📥 Load Games: Load your full game history directly from chess.com
 - 📊 Dashboard: Explore your general performance and patterns
@@ -61,7 +61,7 @@ st.divider()
 st.subheader("💡 Feedback & Feature Requests")
 st.markdown(
     """
-Your ideas help shape **chess.com Analyzer**.  
+Your ideas help shape **Chess Lense**.  
 If you have suggestions, bug reports, or feature requests:
 
 - 📬 **Email:** [infomadevisual@gmail.com](mailto:infomadevisual@gmail.com)
