@@ -31,7 +31,6 @@ class IndexEntry(BaseModel):
     etag: Optional[str] = None
     created_on: str = datetime.now().isoformat()
     updated_on: Optional[str] = None
-    path: Optional[str] = None
 
     def is_update_needed(self) -> bool:
         return (self.updated_on is None
@@ -40,15 +39,6 @@ class IndexEntry(BaseModel):
 class IndexModel(BaseModel):
     archives_list: IndexEntry
     archives: List[IndexEntry] = Field(default_factory=list)
-
-    def get_or_create_archive(self, url: str) -> IndexEntry:
-        for a in self.archives:
-            if a.url == url:
-                return a
-        a = IndexEntry(url=url, created_on=datetime.now().isoformat())
-        self.archives.append(a)
-        return a
-
 
 class ChesscomDownloader:
     def __init__(
@@ -158,7 +148,8 @@ class ChesscomDownloader:
 
             data = self._fetch_conditional_json(archive_idx)
             if not data:
-                games = []
+                continue
+            
             archive = MonthArchive.model_validate(data)
             logger.info(f"HTTP {len(archive.games)} games from {archive_idx.url}")
             games = archive.games
@@ -263,11 +254,6 @@ class ChesscomDownloader:
 
         if r.status_code == 304:
             logger.info(f"304 (Not Modified) - {idx.url}")
-            if idx.path and Path(idx.path).exists():
-                try:
-                    return json.loads(Path(idx.path).read_text(encoding="utf-8"))
-                except Exception as e:
-                    logger.error(f"cache read error {idx.path}: {e}")
             return None
 
         if r.status_code == 200:
