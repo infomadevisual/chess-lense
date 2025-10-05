@@ -88,8 +88,8 @@ def add_header_with_slider(df_scope: pd.DataFrame, header_title:str) -> pd.DataF
     hdr_left, hdr_right = st.columns([1, 1])
     with hdr_left:
         st.header(header_title)
-
     with hdr_right:
+        df_scope = _apply_rated_filter(df_scope, key_prefix="hdr")
         return _add_year_slider(df_scope)
 
 def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
@@ -134,3 +134,13 @@ def get_time_control_tabs(df: pd.DataFrame) -> Tuple[list[str], list[str]]:
     classes = _order_classes(class_counts.index.tolist())
     top_labels = [f"All ({total_n})"] + [f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes]
     return (top_labels, classes)
+
+def _apply_rated_filter(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    if "rated" not in df_scope.columns:
+        return df_scope
+    only_rated = st.checkbox(
+        "Rated Games only",
+        value=True,
+        key=f"{key_prefix}__rated_only"
+    )
+    return df_scope[df_scope["rated"] == True] if only_rated else df_scope

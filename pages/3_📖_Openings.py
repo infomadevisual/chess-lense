@@ -3,39 +3,13 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from utils.app_session import AppSession
+from utils.data_processor import get_counts_by_opening
 from utils.openings_catalog import _load_openings_catalog
 from utils.ui import add_header_with_slider, get_time_control_tabs, load_validate_df, setup_global_page, time_filter_controls, toast_once_page
 
 st.set_page_config(page_title="ChessCom Analyzer • Openings", page_icon="📖", layout="wide")
 PAGE_ID = "Openings"
 setup_global_page(PAGE_ID)
-
-
-def _counts_by_opening(df: pd.DataFrame) -> pd.DataFrame:
-    # Count openings
-    counts = (
-        df.groupby("opening_fullname")["user_result_simple"]
-        .value_counts()
-        .unstack(fill_value=0)
-        .reindex(columns=["win", "draw", "loss"], fill_value=0)
-        .reset_index()
-    )
-    if counts.empty:
-        return counts
-
-    counts["games"] = counts[["win", "draw", "loss"]].sum(axis=1)
-    counts["win_rate"] = counts["win"] / counts["games"]
-
-    # ECO (optional)
-    if "eco" in df.columns:
-        eco_map = (
-            df.groupby("opening_fullname")["eco"]
-            .agg(lambda x: x.mode().iat[0] if not x.mode().empty else None)
-            .reset_index()
-        )
-        counts = counts.merge(eco_map, on="opening_fullname", how="left")
-    return counts
-
 
 def _chart_top(counts: pd.DataFrame, title_prefix: str, top_n: int = 10):
     top = counts.sort_values("games", ascending=False).head(top_n)
@@ -69,12 +43,7 @@ def _render_viz(df: pd.DataFrame):
         toast_once_page(PAGE_ID, "missing_opening", f"Ignored {missing} games with missing opening.", "ℹ️")
     df = df.dropna(subset=["opening_fullname"])
 
-    # split by color
-    is_white = df["user_played_as"].str.lower().eq("white")
-    is_black = df["user_played_as"].str.lower().eq("black")
-
-    w_counts = _counts_by_opening(df[is_white])
-    b_counts = _counts_by_opening(df[is_black])
+    w_counts, b_counts = get_counts_by_opening(df)
 
     if w_counts.empty and b_counts.empty:
         st.warning("No data available for the selected filters.")
