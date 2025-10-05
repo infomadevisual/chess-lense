@@ -89,20 +89,22 @@ class ChesscomDownloader:
     # ---------- public ----------
     def load_from_cache(self) -> pd.DataFrame:
         df = self._read_parquet()
-        
-        # Preprocess
-        # Convert to TZ
-        df["end_time_local"] = df["end_time"].dt.tz_convert(self.timezone)
+        if df is None or df.empty:
+            return pd.DataFrame()
 
-        # returns a list of dicts fast, then normalize once
-        rows = [ self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str) ]
-        pgn_cols = pd.json_normalize(rows)  # much faster than DataFrame(s.tolist())
+        # timezone column
+        if "end_time" in df.columns:
+            df["end_time_local"] = df["end_time"].dt.tz_convert(self.timezone)
+
+        # fast PGN parse
+        rows = [self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str)]
+        pgn_cols = pd.json_normalize(rows)
         df = pd.concat([df.drop(columns=["pgn"]), pgn_cols], axis=1)
 
-        # Add Opening id
+        # openings
         df = join_openings_to_games(df)
-
         return df
+
 
     def download_all(self, progress_cb=None) -> pd.DataFrame:
         # Load / Create Index
@@ -234,7 +236,7 @@ class ChesscomDownloader:
             "n_plies": len(sans),
         }
 
-    def _read_parquet(self) -> pd.DataFrame:
+    def _read_parquet(self) -> Optional[pd.DataFrame]:
         if self.games_path.exists():
             try:
                 df = pd.read_parquet(self.games_path)
@@ -243,8 +245,8 @@ class ChesscomDownloader:
                 return df
             except Exception as e:
                 logger.warning(f"Parquet read failed {self.games_path}: {e}")
-                return pd.DataFrame()
-        return pd.DataFrame()
+                return None
+        return None
 
     def _fetch_conditional_json(self, idx: IndexEntry) -> Optional[dict]:
         headers = dict(self.base_headers)
