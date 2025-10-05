@@ -1,13 +1,14 @@
 # chesscom_downloader.py
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
 from typing import Optional, List
 
 import pandas as pd
+from pydantic import BaseModel, Field
 import requests
-from utils.models import CacheNode, GameModel, GameRow, IndexModel, MonthArchive, ProfileModel, StatsModel
+from utils.models import GameModel, GameRow, MonthArchive, ProfileModel, StatsModel
 from utils.openings_catalog import join_openings_to_games
 import io, re, json
 import pandas as pd
@@ -24,9 +25,36 @@ _WS     = re.compile(r"\s+")
 _MOVENO = re.compile(r"\d+\.(?:\.\.)?")                 # 12. or 12...
 _RESULT = re.compile(r"(1-0|0-1|1/2-1/2|\*)")
 
+# ---------- Cache + HTTP ----------
+class IndexEntry(BaseModel):
+    url: str
+    etag: Optional[str] = None
+    created_on: str = datetime.now().isoformat()
+    updated_on: Optional[str] = None
+    path: Optional[str] = None
+
+    def is_update_needed(self) -> bool:
+        return (self.updated_on is None
+                or datetime.fromisoformat(self.updated_on) < datetime.now() - timedelta(hours=24))
+
+class IndexModel(BaseModel):
+    archives_list: IndexEntry
+    archives: List[IndexEntry] = Field(default_factory=list)
+
+    def get_or_create_archive(self, url: str) -> IndexEntry:
+        for a in self.archives:
+            if a.url == url:
+                return a
+        a = IndexEntry(url=url, created_on=datetime.now().isoformat())
+        self.archives.append(a)
+        return a
+
+
 class ChesscomDownloader:
     def __init__(
         self,
+        username: str,
+        timezone:str|None,
         cache_root: Path = Path(".cache/chesscom"),
         contact_email: str = "infomadevisual@gmail.com",
         timeout: float = 20.0,
@@ -35,23 +63,36 @@ class ChesscomDownloader:
     ):
         self.cache_root = cache_root
         self.base_headers = {"User-Agent": f"chess.com Analyzer (+mailto:{contact_email})"}
+        self.username = username.strip().lower()
+        self.timezone = timezone
         self.timeout = timeout
         self.sleep_sec = sleep_sec
         self.sess = session or requests.Session()
         self.cache_root.mkdir(parents=True, exist_ok=True)
 
-    # ---------- public ----------
-    def load_from_cache(self, username: str, timezone:str|None) -> pd.DataFrame:
-        u = username.strip().lower()
-        cdir = self._ensure_user_dir(u)
-        df = self._read_parquet(cdir)
+    @property
+    def archives_url(self) -> str:
+        return f"https://api.chess.com/pub/player/{self.username}/games/archives"
 
-        if df is None:
-            return pd.DataFrame()
+    @property
+    def cache_dir(self) -> Path:
+         return self.cache_root / self.username
+
+    @property
+    def index_path(self) -> Path:
+        return self.cache_dir / "index.json"
+
+    @property
+    def games_path(self) -> Path:
+        return self.cache_dir / "games.parquet"
+
+    # ---------- public ----------
+    def load_from_cache(self) -> pd.DataFrame:
+        df = self._read_parquet()
         
         # Preprocess
         # Convert to TZ
-        df["end_time_local"] = df["end_time"].dt.tz_convert(timezone)
+        df["end_time_local"] = df["end_time"].dt.tz_convert(self.timezone)
 
         # returns a list of dicts fast, then normalize once
         rows = [ self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str) ]
@@ -63,36 +104,69 @@ class ChesscomDownloader:
 
         return df
 
-    def download_all(self, username: str, timezone:str|None, progress_cb=None) -> pd.DataFrame:
-        cdir = self._ensure_user_dir(username)
-        idx = self._load_index(cdir)
+    def download_all(self, progress_cb=None) -> pd.DataFrame:
+        # Load / Create Index
+        idx = IndexModel(archives_list=IndexEntry(url=self.archives_url))
+        
+        idx_path = self.cache_dir / "index.json"
+        if idx_path.exists():
+            try:
+                idx = IndexModel.model_validate_json(idx_path.read_text(encoding="utf-8"))
+            except Exception:
+                logger.exception("index corrupt -> recreate")
 
-        archives = self._list_archives(username)
+        # Reload archive list if older than 24 hours
+        if idx.archives_list.is_update_needed():
+            etag = idx.archives_list.etag
+            headers = dict(self.base_headers)
+            if etag:
+                headers["If-None-Match"] = etag
 
-        # 1) Load parquet
-        df_existing = self._read_parquet(cdir)  # -> DataFrame oder None
-        months_in_parquet = self._months_in_df(df_existing) if df_existing is not None else set()
+            try:
+                r = self.sess.get(self.archives_url, headers=headers, timeout=self.timeout)
+                if r.status_code == 200:
+                    archive_urls = r.json().get("archives", [])
+                    idx.archives_list.etag = r.headers.get("ETag")
+                    logger.info(f"200 - {len(archive_urls)} archives for {self.username}")
 
-        # 2) Get new data (only of current month if cached already)
+                    # Overwrite archives in index
+                    for url in archive_urls:
+                        entry = next((a for a in idx.archives if a.url == url), None)
+                        if entry is None:
+                            idx.archives.append(IndexEntry(url=url))
+
+                    # TODO: other cases? Like the archive url is still in index but not existant anymore?
+
+                if r.status_code == 304:
+                    logger.info(f"304 - archives not modified for {self.username}")
+                if r.status_code == 404:
+                    logger.warning(f"404 - user not found: {self.username}")
+                logger.warning(f"archives non-200: {r.status_code}")
+            except requests.RequestException as e:
+                logger.exception(f"archives error: {e}")
+
+
+        df = self._read_parquet()
+
+        # Iterate over each archive and check whether it needs update (only updated every 24 hours with etag)
         rows: list[GameRow] = []
-        total = len(archives)
-        for i, month_url in enumerate(archives, start=1):
-            y, m = self._parse_ym_from_url(month_url)
-            month_key = f"{y}-{m:02d}"
-            is_current = self._is_current_month(y, m)
-            already_ingested = month_key in months_in_parquet
-
-            if not is_current and already_ingested:
-                # Historischer Monat bereits im Parquet -> skip
-                logger.info(f"SKIP {month_key} (already in parquet)")
-                if progress_cb: progress_cb(i, total)
+        total_archives = len(idx.archives)
+        for i, archive_idx in enumerate(idx.archives, start=1):
+            if not archive_idx.is_update_needed():
+                logger.info(f"Skipping as no updated needed: {archive_idx.url}")
                 continue
 
-            games = self._fetch_month_games_http(month_url, idx)
-            rows.extend(GameRow.from_game(g, username) for g in games)
-            if progress_cb: progress_cb(i, total)
+            data = self._fetch_conditional_json(archive_idx)
+            if not data:
+                games = []
+            archive = MonthArchive.model_validate(data)
+            logger.info(f"HTTP {len(archive.games)} games from {archive_idx.url}")
+            games = archive.games
 
-        # 3) build dataframe
+            rows.extend(GameRow.from_game(g, self.username) for g in games)
+            if progress_cb: progress_cb(i, total_archives)
+
+        # Build dataframe of updated games
         if rows:
             new_df = pd.DataFrame([r.model_dump() for r in rows])
             if not new_df.empty:
@@ -102,44 +176,27 @@ class ChesscomDownloader:
         else:
             new_df = pd.DataFrame()
 
-        # 4) Merge with existing parquet
-        if df_existing is None:
+        # Merge with existing parquet
+        if df is None:
             df_final = new_df
         else:
             if new_df.empty:
-                df_final = df_existing
+                df_final = df
             else:
                 # Ersetze alle Monate, die in new_df vorkommen
                 upd_months = set(new_df["end_time"].dt.strftime("%Y-%m").unique())
-                mask_keep = ~df_existing["end_time"].dt.strftime("%Y-%m").isin(upd_months)
-                df_final = pd.concat([df_existing[mask_keep], new_df], ignore_index=True)
+                mask_keep = ~df["end_time"].dt.strftime("%Y-%m").isin(upd_months)
+                df_final = pd.concat([df[mask_keep], new_df], ignore_index=True)
                 # Optional: Dedupe via game_url
                 if "game_url" in df_final.columns:
                     df_final = df_final.sort_values("end_time").drop_duplicates("game_url", keep="last")
 
-        # 5) Persist Parquet
-        dfp = cdir / "games.parquet"
+        # Persist Parquet
         if df_final is not None and not df_final.empty:
-            df_final.to_parquet(dfp, index=False)
+            df_final.to_parquet(self.games_path, index=False)
 
-        (cdir / "index.json").write_text(idx.model_dump_json(indent=2), encoding="utf-8")
-        return self.load_from_cache(username,timezone)
-
-    def _list_archives(self, username: str) -> List[str]:
-        url = f"https://api.chess.com/pub/player/{username}/games/archives"
-        try:
-            r = self.sess.get(url, headers=self.base_headers, timeout=self.timeout)
-            if r.status_code == 200:
-                arcs = r.json().get("archives", [])
-                logger.info(f"{len(arcs)} archives for {username}")
-                return arcs
-            if r.status_code == 404:
-                logger.warning(f"user not found: {username}")
-                return []
-            logger.warning(f"archives non-200: {r.status_code}")
-        except requests.RequestException as e:
-            logger.error(f"archives error: {e}")
-        return []
+        self.index_path.write_text(idx.model_dump_json(indent=2), encoding="utf-8")
+        return self.load_from_cache()
 
     # ---- internals ----
     def _fast_san_from_pgn(self, pgn_text: str) -> list[str]:
@@ -177,88 +234,47 @@ class ChesscomDownloader:
             "n_plies": len(sans),
         }
 
-    def _read_parquet(self, cache_dir: Path) -> Optional[pd.DataFrame]:
-        p = cache_dir / "games.parquet"
-        if p.exists():
+    def _read_parquet(self) -> pd.DataFrame:
+        if self.games_path.exists():
             try:
-                df = pd.read_parquet(p)
+                df = pd.read_parquet(self.games_path)
                 if "end_time" in df.columns:
                     df["end_time"] = pd.to_datetime(df["end_time"], utc=True)
                 return df
             except Exception as e:
-                logger.warning(f"Parquet read failed {p}: {e}")
-        return None
+                logger.warning(f"Parquet read failed {self.games_path}: {e}")
+                return pd.DataFrame()
+        return pd.DataFrame()
 
-    def _months_in_df(self, df: pd.DataFrame) -> set[str]:
-        if df is None or df.empty or "end_time" not in df.columns:
-            return set()
-        return set(df["end_time"].dt.strftime("%Y-%m").unique())
-
-    def _parse_ym_from_url(self, url: str) -> tuple[int, int]:
-        parts = url.rstrip("/").split("/")
-        return int(parts[-2]), int(parts[-1])
-
-    def _is_current_month(self, y: int, m: int) -> bool:
-        now = datetime.now(timezone.utc)
-        return (y == now.year) and (m == now.month)
-
-    def _fetch_month_games_http(self, url: str, idx: IndexModel) -> list[GameModel]:
-        # Optional: Conditional GET nur für aktuellen Monat sinnvoll
-        # Hier weiter ETag/Last-Modified auf entry.node pflegen, aber ohne path
-        entry = idx.get_or_create_archive(url)
-        data = self._fetch_conditional_json(url, entry.node)
-        if not data:
-            return []
-        archive = MonthArchive.model_validate(data)
-        logger.info(f"HTTP {len(archive.games)} games from {url}")
-        return archive.games
-
-    def _ensure_user_dir(self, username: str) -> Path:
-        p = self.cache_root / username
-        p.mkdir(parents=True, exist_ok=True)
-        (p / "archives").mkdir(exist_ok=True)
-        return p
-
-    def _load_index(self, cache_dir: Path) -> IndexModel:
-        ip = cache_dir / "index.json"
-        if ip.exists():
-            try:
-                return IndexModel.model_validate_json(ip.read_text(encoding="utf-8"))
-            except Exception:
-                logger.warning("index corrupt -> recreate")
-        return IndexModel()
-
-    def _fetch_conditional_json(self, url: str, node: CacheNode) -> Optional[dict]:
+    def _fetch_conditional_json(self, idx: IndexEntry) -> Optional[dict]:
         headers = dict(self.base_headers)
-        if node.etag:
-            headers["If-None-Match"] = node.etag
-        if node.last_modified:
-            headers["If-Modified-Since"] = node.last_modified
+        if idx.etag:
+            headers["If-None-Match"] = idx.etag
 
-        logger.info(f"GET {url}")
+        logger.info(f"GET {idx.url}")
         try:
-            r = self.sess.get(url, headers=headers, timeout=self.timeout)
+            r = self.sess.get(idx.url, headers=headers, timeout=self.timeout)
         except requests.RequestException as e:
-            logger.error(f"request error {url}: {e}")
+            logger.error(f"request error {idx.url}: {e}")
             return None
 
         if r.status_code == 304:
-            logger.info(f"304 (Not Modified) - {url}")
-            if node.path and Path(node.path).exists():
+            logger.info(f"304 (Not Modified) - {idx.url}")
+            if idx.path and Path(idx.path).exists():
                 try:
-                    return json.loads(Path(node.path).read_text(encoding="utf-8"))
+                    return json.loads(Path(idx.path).read_text(encoding="utf-8"))
                 except Exception as e:
-                    logger.error(f"cache read error {node.path}: {e}")
+                    logger.error(f"cache read error {idx.path}: {e}")
             return None
 
         if r.status_code == 200:
-            logger.info(f"200 (OK) - {url}")
-            node.etag = r.headers.get("ETag")
-            node.last_modified = r.headers.get("Last-Modified")
+            logger.info(f"200 (OK) - {idx.url}")
+            idx.etag = r.headers.get("ETag")
+            idx.created_on = datetime.now().isoformat()
             try:
                 return r.json()
             except ValueError:
-                logger.error(f"json parse error {url}")
+                logger.error(f"json parse error {idx.url}")
                 return None
 
         if r.status_code == 429:
@@ -266,8 +282,8 @@ class ChesscomDownloader:
             return None
 
         if r.status_code == 404:
-            logger.warning(f"404 {url}")
+            logger.warning(f"404 {idx.url}")
             return None
 
-        logger.warning(f"{r.status_code} {url}")
+        logger.warning(f"{r.status_code} {idx.url}")
         return None

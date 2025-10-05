@@ -4,31 +4,6 @@ from typing import Optional, List, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, ConfigDict
 
-# ---------- Cache + HTTP ----------
-class CacheNode(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    etag: Optional[str] = None
-    last_modified: Optional[str] = None
-    path: Optional[str] = None
-
-class ArchiveEntry(BaseModel):
-    url: str
-    node: CacheNode = Field(default_factory=CacheNode)
-
-class IndexModel(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    profile: CacheNode = Field(default_factory=CacheNode)
-    stats: CacheNode = Field(default_factory=CacheNode)
-    archives: List[ArchiveEntry] = Field(default_factory=list)
-
-    def get_or_create_archive(self, url: str) -> ArchiveEntry:
-        for a in self.archives:
-            if a.url == url:
-                return a
-        a = ArchiveEntry(url=url)
-        self.archives.append(a)
-        return a
-
 # ---------- API payloads ----------
 class PlayerRef(BaseModel):
     username: Optional[str] = None
