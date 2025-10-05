@@ -13,8 +13,16 @@ import io, re, json
 import pandas as pd
 import chess.pgn
 
-_CLK_RE = re.compile(r"\[%clk\s+([0-9:.]+)\]")
 logger = logging.getLogger("chesscom")
+
+# precompile once at module import
+_TAGS   = re.compile(r"^\[.*?\]\s*", re.S | re.M)       # tag pair section
+_COMMS  = re.compile(r"\{[^}]*\}")                      # {...}
+_VARS   = re.compile(r"\([^()]*\)")                     # ( ... )
+_NAGS   = re.compile(r"\$\d+")
+_WS     = re.compile(r"\s+")
+_MOVENO = re.compile(r"\d+\.(?:\.\.)?")                 # 12. or 12...
+_RESULT = re.compile(r"(1-0|0-1|1/2-1/2|\*)")
 
 class ChesscomDownloader:
     def __init__(
@@ -45,8 +53,9 @@ class ChesscomDownloader:
         # Convert to TZ
         df["end_time_local"] = df["end_time"].dt.tz_convert(timezone)
 
-        # extract info from pgn
-        pgn_cols = df["pgn"].apply(self._parse_pgn_min).pipe(lambda s: pd.DataFrame(s.tolist()))
+        # returns a list of dicts fast, then normalize once
+        rows = [ self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str) ]
+        pgn_cols = pd.json_normalize(rows)  # much faster than DataFrame(s.tolist())
         df = pd.concat([df.drop(columns=["pgn"]), pgn_cols], axis=1)
 
         # Add Opening id
@@ -161,40 +170,38 @@ class ChesscomDownloader:
         return []
 
     # ---- internals ----
-    def _parse_pgn_min(self, pgn_text: str) -> dict:
-        game = chess.pgn.read_game(io.StringIO(pgn_text))
-        if not game:
-            return {
-                "eco": None, "eco_url": None,
-                "moves_normalized": None,
-                "moves_san_json": "[]", "clocks_json": "[]",
-                "n_plies": 0
-            }
+    def fast_san_from_pgn(self, pgn_text: str) -> list[str]:
+        if not pgn_text:
+            return []
+        s = _TAGS.sub("", pgn_text)         # drop header
+        s = _COMMS.sub(" ", s)              # drop {comments}
+        s = _VARS.sub(" ", s)               # drop (variations)
+        s = _NAGS.sub(" ", s)               # drop $n
+        s = _MOVENO.sub(" ", s)             # drop 12. or 12...
+        s = _RESULT.sub(" ", s)             # drop result
+        s = _WS.sub(" ", s).strip()
+        # tokens now are SAN or clocks, etc.; filter out clocks if present
+        toks = [t for t in s.split(" ") if not t.startswith("%clk")]
+        # also drop bare '+' or '#' artifacts if present
+        return [t for t in toks if t and t not in ["+", "#"]]
 
-        hdr = game.headers
-        eco = hdr.get("ECO")
-
-        board = game.board()
-        sans, clocks = [], []
-        
-        for node in game.mainline():
-            san = board.san(node.move)
-            board.push(node.move)
-            cmt = node.comment or ""
-            m = _CLK_RE.search(cmt)
-            sans.append(san)
-            clocks.append(m.group(1) if m else None)
-
+    def _parse_pgn_min_fast(self, pgn_text: str) -> dict:
+        sans = self.fast_san_from_pgn(pgn_text)
+        # clocks straight from text; no parsing tree needed
+        clocks = re.findall(r"%clk\s+([0-9:.\-]+)", pgn_text)
+        # ECO header without full parse
+        eco = None
+        m = re.search(r'^\[ECO\s+"([^"]+)"\]', pgn_text, re.M)
+        if m:
+            eco = m.group(1)
         moves_normalized = " ".join(
-            f"{(i//2)+1}. {m}" if i % 2 == 0 else m
-            for i, m in enumerate(sans)
+            (f"{(i//2)+1}. {m}" if i % 2 == 0 else m) for i, m in enumerate(sans)
         )
-
         return {
             "eco": eco,
             "moves_normalized": moves_normalized,
-            "moves_san_json": json.dumps(sans),
-            "clocks_json": json.dumps(clocks),
+            "moves_san_json": sans,      # keep list; JSON-encode later if needed
+            "clocks_json": clocks,       # keep list
             "n_plies": len(sans),
         }
 

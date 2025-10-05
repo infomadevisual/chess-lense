@@ -42,17 +42,25 @@ with st.form("user_form", clear_on_submit=False):
         help="Lowercase enforced",
     )
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         submit = st.form_submit_button("Load", type="primary")
     with c2:
-        demo = st.form_submit_button("Demo: hikaru")
+        demo_hikaru = st.form_submit_button("Demo: hikaru")
+    with c3:
+        demo_gotham = st.form_submit_button("Demo: gothamchess")
 
 # ---------- Handle actions ----------
-if demo:
+if demo_hikaru:
     username_input = "hikaru"
     session.username = username_input.strip().lower()
-    logger.info("Demo user selected")
+    logger.info("Demo user 'hikaru' selected")
+    submit = True
+
+if demo_gotham:
+    username_input = "gothamchess"
+    session.username = username_input.strip().lower()
+    logger.info("Demo user 'gothamchess' selected")
     submit = True
 
 if submit:
@@ -72,7 +80,7 @@ if submit:
         if not Config.debug:
             df = downloader.download_all(session.username, st.context.timezone, progress_cb=update_progress)
         else:
-            df = downloader.load_from_cache(session.username,st.context.timezone, progress_cb=update_progress)
+            df = downloader.load_from_cache(session.username,st.context.timezone)
 
     prog.empty()
 
