@@ -50,6 +50,16 @@ with st.form("user_form", clear_on_submit=False):
     with c3:
         demo_gotham = st.form_submit_button("Demo: gothamchess")
 
+# Privacy notice
+st.markdown("""
+### ℹ️ Data Privacy Notice
+
+Game data is fetched from the public [Chess.com Published-Data API](https://support.chess.com/en/articles/9650547-published-data-api) and cached locally for faster analysis.  
+No data is shared, sold, or stored permanently.  
+All caching is solely for performance optimization.  
+This tool is **unaﬃliated with Chess.com** and complies with their API terms.
+""")
+
 # ---------- Handle actions ----------
 if demo_hikaru:
     username_input = "hikaru"
