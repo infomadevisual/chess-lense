@@ -116,24 +116,20 @@ class ChesscomDownloader:
             try:
                 r = self.sess.get(self.archives_url, headers=headers, timeout=self.timeout)
                 if r.status_code == 200:
-                    archive_urls = r.json().get("archives", [])
+                    urls = r.json().get("archives", [])
+                    prev = {a.url: a for a in idx.archives}
+                    idx.archives = []
+                    for u in urls:
+                        e = prev.get(u, IndexEntry(url=u))
+                        idx.archives.append(e)
                     idx.archives_list.etag = r.headers.get("ETag")
-                    logger.info(f"200 - {len(archive_urls)} archives for {self.username}")
-
-                    # Overwrite archives in index
-                    for url in archive_urls:
-                        entry = next((a for a in idx.archives if a.url == url), None)
-                        if entry is None:
-                            idx.archives.append(IndexEntry(url=url))
-
-                    # TODO: other cases? Like the archive url is still in index but not existant anymore?
+                    idx.archives_list.updated_on = datetime.now().isoformat()
 
                 if r.status_code == 304:
                     logger.info(f"304 - archives not modified for {self.username}")
+                    idx.archives_list.updated_on = datetime.now().isoformat()
                 if r.status_code == 404:
                     logger.warning(f"404 - user not found: {self.username}")
-                
-                idx.archives_list.updated_on = datetime.now().isoformat()
 
             except requests.RequestException as e:
                 logger.exception(f"archives error: {e}")
@@ -147,42 +143,50 @@ class ChesscomDownloader:
                 continue
 
             data = self._fetch_conditional_json(archive_idx)
-            if not data:
+            if data is None:
                 continue
-            
-            archive = MonthArchive.model_validate(data)
-            logger.info(f"HTTP {len(archive.games)} games from {archive_idx.url}")
-            games = archive.games
 
-            rows.extend(GameRow.from_game(g, self.username) for g in games)
+            archive = MonthArchive.model_validate({"games": data.get("games", [])})
+
+            logger.info(f"HTTP {len(archive.games)} games from {archive_idx.url}")
+
+            rows.extend(GameRow.from_game(g, self.username) for g in archive.games)
             archive_idx.updated_on = datetime.now().isoformat()
             if progress_cb: progress_cb(i, total_archives)
 
         # Build dataframe of updated games
-        if rows:
-            new_df = pd.DataFrame([r.model_dump() for r in rows])
-            if not new_df.empty:
-                new_df["end_time"] = pd.to_datetime(new_df["end_time"], utc=True)
-                for c in ["user_rating", "opponent_rating"]:
-                    new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
-        else:
-            new_df = pd.DataFrame()
+        new_df = pd.DataFrame([r.model_dump() for r in rows]) if rows else pd.DataFrame()
+        if not new_df.empty:
+            new_df["end_time"] = pd.to_datetime(new_df["end_time"], utc=True)
+            for c in ["user_rating", "opponent_rating"]:
+                new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
 
         # Merge with existing parquet
-        df = self._read_parquet()
-        if df is None:
+        existing = self._read_parquet()
+
+        if existing is None:
             df_final = new_df
+        elif new_df.empty:
+            df_final = existing
         else:
-            if new_df.empty:
-                df_final = df
-            else:
-                # Ersetze alle Monate, die in new_df vorkommen
-                upd_months = set(new_df["end_time"].dt.strftime("%Y-%m").unique())
-                mask_keep = ~df["end_time"].dt.strftime("%Y-%m").isin(upd_months)
-                df_final = pd.concat([df[mask_keep], new_df], ignore_index=True)
-                # Optional: Dedupe via game_url
-                if "game_url" in df_final.columns:
-                    df_final = df_final.sort_values("end_time").drop_duplicates("game_url", keep="last")
+            existing["end_time"] = pd.to_datetime(existing["end_time"], utc=True, errors="coerce")
+
+            # Month-Replacement + Prefer new rows
+            upd_months = set(new_df["end_time"].dt.to_period("M"))
+            keep_mask = ~existing["end_time"].dt.to_period("M").isin(upd_months)
+            merged = pd.concat([existing[keep_mask], new_df], ignore_index=True, copy=False)
+
+            # Key mit Fallback, neue Versionen gewinnen
+            key = merged["game_url"].fillna(merged.get("pgn_url"))
+            merged = (
+                merged.assign(__key=key, __is_new=merged.index >= len(existing[keep_mask]))
+                .sort_values(["__key", "__is_new", "end_time"])
+                .drop_duplicates(subset="__key", keep="last")
+                .drop(columns=["__key", "__is_new"])
+                .sort_values("end_time")
+                .reset_index(drop=True)
+            )
+            df_final = merged
 
         # Persist Parquet & Index
         self.cache_dir.mkdir(parents=True, exist_ok=True)
