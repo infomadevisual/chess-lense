@@ -8,6 +8,7 @@ pydantic = "*"
 pytz = "*"
 streamlit-javascript = "*"
 python-chess = "*"
+psutil = "*"
 
 [dev-packages]
 notebook = "*"
