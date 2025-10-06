@@ -22,7 +22,7 @@ def _render_viz(df:pd.DataFrame):
 
     # ---- Aggregations ----
     order_map = {"win": 0, "draw": 1, "loss": 2}
-    color_legend=alt.Color("user_result_simple:N", sort= ["loss", "draw", "win"])
+    color_legend=alt.Color("user_result_simple:N", sort= ["loss", "draw", "win"], title=None)
     bar_order=alt.Order("order_key:Q", sort="ascending")
     y_axis = alt.Y("share:Q", title="Share (%)")
 

@@ -106,11 +106,11 @@ def _kpi(df:pd.DataFrame):
 
     c1,c2,c3,c4,c5,c6 = st.columns(6)
     c1.metric("Games", len(df), border=True)
-    c2.metric("Win-rate", f"{win_rate:.0%}", border=True)
-    c3.metric("Draw-rate", f"{draw_rate:.0%}", border=True)
-    c4.metric("Loss-rate", f"{loss_rate:.0%}", border=True)
-    c5.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—", border=True)
-    c6.metric("Rating Improvement", f"{rated_delta:+.0f}", border=True)
+    c2.metric("Win rate", f"{win_rate:.0%}", border=True)
+    c3.metric("Draw rate", f"{draw_rate:.0%}", border=True)
+    c4.metric("Loss rate", f"{loss_rate:.0%}", border=True)
+    c5.metric("⌀ Elo Opp", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—", border=True)
+    c6.metric("⌀ Elo Delta", f"{rated_delta:+.0f}", border=True)
 
 def show_opening_kpis(label: str, data):
     if data is None:
@@ -118,9 +118,16 @@ def show_opening_kpis(label: str, data):
         return
 
     def get_metric(row, best_or_worst: Literal["Best", "Worst"]):
+        st.markdown("""
+        <style>
+        [data-testid="stMetricValue"] {
+            font-size: 1.5rem !important; /* default is ~2.5rem */
+        }
+        </style>
+        """, unsafe_allow_html=True)
         return st.metric(
             width="stretch",
-            label=f"{best_or_worst} Opening for {label} ({row.games} games and {row.win_rate*100:.1f}% win-rate)",
+            label=f"{best_or_worst} {label} ({row.games} games / {row.win_rate*100:.1f}% win rate)",
             value=f"{row.opening_name}",
             help=f"With a minimum of 20/10/1 games depending on availability (# games: {row.games})",
             border=True

@@ -46,7 +46,6 @@ Current features:
 - 📊 Dashboard: Explore your general performance and patterns
 - 📖 Openings: Overview of your best- and worst-performing openings
 - 🕒 Seasonalities: Shows you when you perform the best and the worst
-- 🔍 Compare your play against **other players**  
 """
 )
 st.info("Get started by entering your **chess.com username** in the *Load Games* page from the sidebar.")
@@ -94,7 +93,7 @@ changelog = [
         "items": [
             "Load games: Load games from chess.com",
             "Dashboard: An overview with rather simple performance statistics",
-            "Openings: Discovery of win-rates for openings and their variations",
+            "Openings: Discovery of win rates for openings and their variations",
             "Seasonalites: Analysis of yearly, monthly, daily, hourly patterns"
         ],
     }

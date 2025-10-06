@@ -29,7 +29,7 @@ def _chart_top(counts: pd.DataFrame, column_name:Literal["opening_fullname", "op
         )
     ).properties(
         height=row_height * len(top),
-        title=f"{title_prefix}: Top {top_n} openings (win-rate color)"
+        title=f"{title_prefix}: Top {top_n} openings (win rate color)"
     )
     return chart
 
