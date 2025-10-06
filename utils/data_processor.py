@@ -2,7 +2,7 @@ from typing import Literal
 import pandas as pd
 import streamlit as st
 
-def counts_by_opening(df: pd.DataFrame, merge_column: Literal["opening_name", "opening_fullname"], player_color: Literal["white", "black"]) -> pd.DataFrame:
+def counts_by_opening(df: pd.DataFrame, merge_column: Literal["opening_name", "opening_fullname"], player_color: Literal["w", "b"]) -> pd.DataFrame:
     color = df["user_played_as"].str.lower().eq(player_color)
     counts = (
         df[color].groupby([merge_column])["user_result_simple"]

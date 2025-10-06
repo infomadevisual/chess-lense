@@ -41,8 +41,8 @@ def _render_viz(df: pd.DataFrame, column_name:Literal["opening_fullname", "openi
         toast_once_page(PAGE_ID, "missing_opening", f"Ignored {missing} games with missing opening.", "ℹ️")
     df = df.dropna(subset=[column_name])
 
-    w_counts = counts_by_opening(df, column_name, "white")
-    b_counts = counts_by_opening(df, column_name, "black")
+    w_counts = counts_by_opening(df, column_name, "w")
+    b_counts = counts_by_opening(df, column_name, "b")
 
     if w_counts.empty and b_counts.empty:
         st.warning("No data available for the selected filters.")

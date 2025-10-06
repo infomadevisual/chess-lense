@@ -147,8 +147,8 @@ def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
 
     _kpi(df)
 
-    w_counts = counts_by_opening(df, "opening_name", "white")
-    b_counts = counts_by_opening(df, "opening_name", "black")
+    w_counts = counts_by_opening(df, "opening_name", "w")
+    b_counts = counts_by_opening(df, "opening_name", "b")
     show_opening_kpis("White", get_best_worst_openings(w_counts))
     show_opening_kpis("Black", get_best_worst_openings(b_counts))
 
