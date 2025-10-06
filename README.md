@@ -14,8 +14,6 @@ If you find it useful, please ⭐ star the repo or share it with other chess ent
 
 ## ✨ Features
 
-### 📥 Load Games: Load your full game history directly from chess.com
-![Load Games](./assets/load_games.png)
 ### 📊 Dashboard: Explore your general performance and patterns
 ![Dashboard](./assets/dashboard.png)
 ### 📖 Openings: Overview of your best- and worst-performing openings
