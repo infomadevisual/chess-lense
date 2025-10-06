@@ -3,14 +3,14 @@
 Analyze your chess games with an interactive Streamlit dashboard.
 Get insights into your **openings**, **win rates**, **rating trends**, and more — directly from your public chess.com data.
 
-# 🌍 Project Status
-
-This is a non-commercial open-source hobby project.
-If you find it useful, please ⭐ star the repo or share it with other chess enthusiasts!
-
 ## 🚀 Live Demo
 👉 [Open in Streamlit Cloud](https://chess-lense.streamlit.app)
 
+
+## 🌍 Project Status
+
+This is a non-commercial open-source hobby project.
+If you find it useful, please ⭐ star the repo or share it with other chess enthusiasts!
 
 ## ✨ Features
 
