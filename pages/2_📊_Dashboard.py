@@ -101,7 +101,7 @@ def _kpi(df:pd.DataFrame):
     avg_opp = df["opponent_rating"].mean()
 
     # simple rated delta: last minus first by end_time within rated games
-    rated = df[df["rated"] == True].sort_values("end_time")
+    rated = df[df["rated"] == True].sort_values("end_time_local")
     rated_delta = (rated["user_rating"].iloc[-1] - rated["user_rating"].iloc[0]) if len(rated) >= 2 else 0
 
     c1,c2,c3,c4,c5,c6 = st.columns(6)
