@@ -65,7 +65,7 @@ class GameRow(BaseModel):
     @staticmethod
     def from_game(g: GameModel, username: str) -> "GameRow":
         if g.black.username != None and g.black.username.strip().lower() == username:
-            user_played_as = "black"
+            user_played_as = "b"
             user_name = g.black.username
             opponent_username = g.white.username
             user_rating = g.black.rating
@@ -73,7 +73,7 @@ class GameRow(BaseModel):
             user_result = g.black.result
             opponent_result = g.white.result
         elif g.white.username != None and g.white.username.strip().lower() == username:
-            user_played_as = "white"
+            user_played_as = "w"
             user_name = g.white.username
             opponent_username = g.black.username
             user_rating = g.white.rating

@@ -1,4 +1,6 @@
+import psutil
 import streamlit as st
+import os
 
 from utils.chesscom_downloader import ChesscomDownloader
 from utils.config import Config
@@ -12,6 +14,13 @@ if Config.debug == True and Config.load_user != None:
     df = ChesscomDownloader(timeout=20.0, sleep_sec=0.2, username=Config.load_user,timezone=st.context.timezone).load_from_cache()
     session.games_df = df
     session.persist()
+
+# Page Setup
+st.set_page_config(
+    page_title="Chess Lense • Home",
+    page_icon="♟️",
+    layout="centered",
+)
 
 # Global Styling
 st.markdown(
@@ -29,12 +38,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Page Setup
-st.set_page_config(
-    page_title="Chess Lense • Home",
-    page_icon="♟️",
-    layout="centered",
-)
+
+# --- RAM monitor ---
+process = psutil.Process(os.getpid())
+st.sidebar.caption(f"RAM: {process.memory_info().rss / 1e6:.0f} MB")
 
 st.title("♟️ Chess Lense")
 st.subheader("Analyze your chess games like never before")

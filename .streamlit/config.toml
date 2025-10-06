@@ -1,0 +1,4 @@
+[server]
+fileWatcherType = "poll"   # or "none" to fully disable
+runOnSave = false
+folderWatchBlacklist = [".*\\.parquet$", "^data/", "^cache/", "^.git/", "^.venv/"]

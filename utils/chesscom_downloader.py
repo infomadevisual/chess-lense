@@ -82,7 +82,7 @@ class ChesscomDownloader:
         if df is None or df.empty:
             return pd.DataFrame()
 
-        # timezone column
+        # ts with timezone column
         if "end_time" in df.columns:
             df["end_time_local"] = df["end_time"].dt.tz_convert(self.timezone)
 
@@ -90,6 +90,9 @@ class ChesscomDownloader:
         rows = [self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str)]
         pgn_cols = pd.json_normalize(rows)
         df = pd.concat([df.drop(columns=["pgn"]), pgn_cols], axis=1)
+
+        # Remove unnecessary columns
+        df.drop(columns=["moves_normalized", "end_time", "eco_url", "game_url", "tournament_url", "username", "initial_setup_fen"], inplace=True)
 
         # openings
         df = join_openings_to_games(df)
