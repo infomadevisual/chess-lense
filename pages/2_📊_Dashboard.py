@@ -16,11 +16,11 @@ def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     d = (df[df["rated"] == True]
-         .dropna(subset=["end_time", "user_rating"])
-         .sort_values("end_time")
-         .loc[:, ["end_time", "user_rating", "opponent_rating", "time_class"]]
+         .dropna(subset=["end_time_local", "user_rating"])
+         .sort_values("end_time_local")
+         .loc[:, ["end_time_local", "user_rating", "opponent_rating", "time_class"]]
          .copy())
-    d["date"] = d["end_time"].dt.normalize()
+    d["date"] = d["end_time_local"].dt.normalize()
     return (d.groupby(["time_class", "date"], as_index=False)
               .agg(user_rating=("user_rating", "last"),
                    opponent_rating=("opponent_rating", "mean")))

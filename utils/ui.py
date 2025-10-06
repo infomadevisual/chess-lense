@@ -115,7 +115,7 @@ def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
     end_idx = len(labels) - 1
 
     # timestamps for filtering
-    t = pd.to_datetime(df_scope["end_time"], errors="coerce", utc=True)
+    t = pd.to_datetime(df_scope["end_time_local"], errors="coerce", utc=True)
 
     def _count(si: int, ei: int) -> int:
         start_ts = months[si].to_timestamp(how="start").tz_localize("UTC")
