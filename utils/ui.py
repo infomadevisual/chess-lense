@@ -1,8 +1,15 @@
-from typing import Tuple
+from typing import Literal, Tuple
+
 import pandas as pd
 import streamlit as st
 
-from utils.app_session import AppSession
+from services.services import get_data_manager
+from utils.session import (
+    ensure_app_initialized,
+    get_session_username,
+    get_session_username_normalized,
+)
+
 
 def toast_once_page(page_id: str, key: str, text: str, icon: str = "ℹ️"):
     """Show once per page visit regardless of identical text."""
@@ -14,6 +21,7 @@ def toast_once_page(page_id: str, key: str, text: str, icon: str = "ℹ️"):
         st.toast(text, icon=icon)
         reg[key] = visit
 
+
 def _set_active_page(page_id: str):
     """Call at top of each page. Increments visit when you enter the page."""
     ap_key = "__active_page"
@@ -21,6 +29,7 @@ def _set_active_page(page_id: str):
     if st.session_state.get(ap_key) != page_id:
         st.session_state[ap_key] = page_id
         st.session_state[v_key] = st.session_state.get(v_key, 0) + 1
+
 
 def _inject_global_page_styles():
     st.markdown(
@@ -37,22 +46,44 @@ def _inject_global_page_styles():
             }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-def setup_global_page(page_id: str):
-    _inject_global_page_styles()
-    _set_active_page(page_id)
 
-def load_validate_df() -> pd.DataFrame:
-    session = AppSession.from_streamlit()
-    df = session.games_df
-    if df is None or df.empty:
-        st.warning("No games loaded. Go to 📥Load Games and load your games first.")
+def setup_global_page(page_name: str, layout: Literal["wide", "centered"] = "wide"):
+    ensure_app_initialized()
+
+    st.set_page_config(
+        page_title=f"ChessLense - {page_name}", page_icon="♟️", layout=layout
+    )
+    _inject_global_page_styles()
+    _set_active_page(page_name)
+
+
+def load_validate_games(progress_cb=None) -> pd.DataFrame:
+    username = get_session_username()
+    if username is None:
+        st.warning(
+            "No user provided. Go to 📥Load Games and load games of a user first."
+        )
         st.stop()
 
-    if session.username is None:
-        st.error("No user loaded. Go to 📥Load Games and load your games first.")
+    tz = st.context.timezone
+    if tz == None:
+        st.warning("Timezone couldn't be detected, using UTC")
+        tz = "UTC"
+
+    normalized_user = get_session_username_normalized()
+    if normalized_user is None:
+        st.warning(
+            "No user provided. Go to 📥Load Games and load games of a user first."
+        )
+        st.stop()
+
+    df = get_data_manager().load_games(normalized_user, tz, progress_cb)
+
+    if df is None or df.empty:
+        st.warning("No games loaded. Go to 📥Load Games and load your games first.")
         st.stop()
 
     return df.copy()
@@ -68,13 +99,13 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
     options = [f"{lbl} ({counts_map[lbl]})" for lbl in labels]
     default = options  # select all
     selected_opts = st.pills(
-            label="Time controls",
-            options=options,
-            selection_mode="multi",
-            default=default,
-            key=f"{key_prefix}_pills",
-            label_visibility="collapsed",
-        )
+        label="Time controls",
+        options=options,
+        selection_mode="multi",
+        default=default,
+        key=f"{key_prefix}_pills",
+        label_visibility="collapsed",
+    )
 
     selected_labels = [s.split(" (", 1)[0] for s in selected_opts]
 
@@ -84,7 +115,8 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
     mask = df_scope["time_label"].astype(str).isin(selected_labels)
     return df_scope[mask]
 
-def add_header_with_slider(df_scope: pd.DataFrame, header_title:str) -> pd.DataFrame:
+
+def add_header_with_slider(df_scope: pd.DataFrame, header_title: str) -> pd.DataFrame:
     hdr_left, hdr_right = st.columns([1, 1])
     with hdr_left:
         st.header(header_title)
@@ -92,15 +124,21 @@ def add_header_with_slider(df_scope: pd.DataFrame, header_title:str) -> pd.DataF
         df_scope = _apply_rated_filter(df_scope, key_prefix="hdr")
         return _add_year_slider(df_scope)
 
+
 def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
-    st.markdown("""
+    st.markdown(
+        """
     <style>
     div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) { padding-top: 3rem; }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # parse times
-    s_local = pd.to_datetime(df_scope["end_time_local"], errors="coerce").dt.tz_convert(None)
+    s_local = pd.to_datetime(df_scope["end_time_local"], errors="coerce").dt.tz_convert(
+        None
+    )
     if s_local.dropna().empty:
         return df_scope.copy()
 
@@ -119,7 +157,7 @@ def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
 
     def _count(si: int, ei: int) -> int:
         start_ts = months[si].to_timestamp(how="start").tz_localize("UTC")
-        end_ts   = (months[ei] + 1).to_timestamp(how="start").tz_localize("UTC")
+        end_ts = (months[ei] + 1).to_timestamp(how="start").tz_localize("UTC")
         mask = (t >= start_ts) & (t < end_ts)
         return int(mask.sum())
 
@@ -140,8 +178,9 @@ def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
 
     start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
     start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
-    end_ts   = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
+    end_ts = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
     return df_scope[(t >= start_ts) & (t < end_ts)].copy()
+
 
 def _order_classes(classes):
     order = ["bullet", "blitz", "rapid", "daily", "classical"]
@@ -151,19 +190,21 @@ def _order_classes(classes):
     rest = [c for c in lower if c not in seen]
     return ordered + sorted(rest)
 
+
 def get_time_control_tabs(df: pd.DataFrame) -> Tuple[list[str], list[str]]:
     total_n = len(df)
     class_counts = df["time_class"].fillna("unknown").str.lower().value_counts()
     classes = _order_classes(class_counts.index.tolist())
-    top_labels = [f"All ({total_n})"] + [f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes]
+    top_labels = [f"All ({total_n})"] + [
+        f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes
+    ]
     return (top_labels, classes)
+
 
 def _apply_rated_filter(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     if "rated" not in df_scope.columns:
         return df_scope
     only_rated = st.checkbox(
-        "Rated Games only",
-        value=True,
-        key=f"{key_prefix}__rated_only"
+        "Rated Games only", value=True, key=f"{key_prefix}__rated_only"
     )
     return df_scope[df_scope["rated"] == True] if only_rated else df_scope

@@ -1,31 +1,42 @@
 # dashboard_checkboxes.py
-from typing import Any, Literal, Optional, Tuple
-import streamlit as st
-import pandas as pd
+from typing import Literal, Optional, Tuple
+
 import altair as alt
 import numpy as np
-from utils.app_session import AppSession
-from utils.data_processor import counts_by_opening
-from utils.ui import add_header_with_slider, get_time_control_tabs, load_validate_df, setup_global_page, time_filter_controls
+import pandas as pd
+import streamlit as st
 
-st.set_page_config(page_title="ChessCom Analyzer • Dashboard", page_icon="📊", layout="wide")
-PAGE_ID = "Dashboard"
-setup_global_page(PAGE_ID)
+from utils.data_processor import counts_by_opening
+from utils.ui import (
+    add_header_with_slider,
+    get_time_control_tabs,
+    load_validate_games,
+    setup_global_page,
+    time_filter_controls,
+)
+
+setup_global_page("📊 Dashboard")
+
 
 def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
-    d = (df[df["rated"] == True]
-         .dropna(subset=["end_time", "user_rating"])
-         .sort_values("end_time")
-         .loc[:, ["end_time", "user_rating", "opponent_rating", "time_class"]]
-         .copy())
-    d["date"] = d["end_time"].dt.normalize()
-    return (d.groupby(["time_class", "date"], as_index=False)
-              .agg(user_rating=("user_rating", "last"),
-                   opponent_rating=("opponent_rating", "mean")))
+    d = (
+        df[df["rated"] == True]
+        .dropna(subset=["end_time_local", "user_rating"])
+        .sort_values("end_time_local")
+        .loc[:, ["end_time_local", "user_rating", "opponent_rating", "time_class"]]
+        .copy()
+    )
+    d["date"] = d["end_time_local"].dt.normalize()
+    return d.groupby(["time_class", "date"], as_index=False).agg(
+        user_rating=("user_rating", "last"), opponent_rating=("opponent_rating", "mean")
+    )
 
-def get_best_worst_openings(counts_df: pd.DataFrame) -> Optional[Tuple[pd.Series, pd.Series]]:
+
+def get_best_worst_openings(
+    counts_df: pd.DataFrame,
+) -> Optional[Tuple[pd.Series, pd.Series]]:
     if counts_df is None or counts_df.empty:
         return None
 
@@ -53,7 +64,10 @@ def get_best_worst_openings(counts_df: pd.DataFrame) -> Optional[Tuple[pd.Series
     worst = scope.sort_values(["win_rate", "games"], ascending=[True, False]).iloc[0]
     return best, worst
 
-def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Chart | None:
+
+def _rating_progress_daily(
+    df: pd.DataFrame, title: str, multi: bool
+) -> alt.Chart | None:
     d = _daily_last(df)
     if d.empty:
         return None
@@ -61,15 +75,21 @@ def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Cha
     dmin, dmax = d["date"].min(), d["date"].max()
     n_months = (dmax.year - dmin.year) * 12 + (dmax.month - dmin.month) + 1
     if n_months <= 18:
-        tick = {"interval": "month", "step": 1}; fmt = "%b %Y"
+        tick = {"interval": "month", "step": 1}
+        fmt = "%b %Y"
     elif n_months <= 48:
-        tick = {"interval": "month", "step": 3}; fmt = "%b %Y"
+        tick = {"interval": "month", "step": 3}
+        fmt = "%b %Y"
     else:
-        tick = {"interval": "year", "step": 1}; fmt = "%Y"
+        tick = {"interval": "year", "step": 1}
+        fmt = "%Y"
 
-    x = alt.X("date:T", title="Date",
-              axis=alt.Axis(format=fmt, labelAngle=0, tickCount=tick, labelOverlap=False),
-              scale=alt.Scale(nice={"interval": tick["interval"], "step": tick["step"]}))
+    x = alt.X(
+        "date:T",
+        title="Date",
+        axis=alt.Axis(format=fmt, labelAngle=0, tickCount=tick, labelOverlap=False),
+        scale=alt.Scale(nice={"interval": tick["interval"], "step": tick["step"]}),
+    )
     y = alt.Y("user_rating:Q", title="Rating")
 
     base = alt.Chart(d).properties(title=title)
@@ -79,10 +99,16 @@ def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Cha
             alt.Tooltip("user_rating:Q", title="Rating", format=".0f"),
             alt.Tooltip("time_class:N", title="Class"),
         ]
-        return base.mark_line().encode(x=x, y=y,
-                                       color=alt.Color("time_class:N", title="Class",
-                                                       sort=["bullet","blitz","rapid","daily","classical"]),
-                                       tooltip=tooltips)
+        return base.mark_line().encode(
+            x=x,
+            y=y,
+            color=alt.Color(
+                "time_class:N",
+                title="Class",
+                sort=["bullet", "blitz", "rapid", "daily", "classical"],
+            ),
+            tooltip=tooltips,
+        )
     else:
         tooltips = [
             alt.Tooltip("date:T", title="Date"),
@@ -91,26 +117,33 @@ def _rating_progress_daily(df: pd.DataFrame, title: str, multi: bool) -> alt.Cha
         return base.mark_line().encode(x=x, y=y, tooltip=tooltips)
 
 
-def _kpi(df:pd.DataFrame):
+def _kpi(df: pd.DataFrame):
     # KPIs
     total = len(df)
     win_rate = (df["user_result_simple"] == "win").sum() / total if total else 0.0
     draw_rate = (df["user_result_simple"] == "draw").sum() / total if total else 0.0
     loss_rate = (df["user_result_simple"] == "loss").sum() / total if total else 0.0
-    
+
     avg_opp = df["opponent_rating"].mean()
 
     # simple rated delta: last minus first by end_time within rated games
-    rated = df[df["rated"] == True].sort_values("end_time")
-    rated_delta = (rated["user_rating"].iloc[-1] - rated["user_rating"].iloc[0]) if len(rated) >= 2 else 0
+    rated = df[df["rated"] == True].sort_values("end_time_local")
+    rated_delta = (
+        (rated["user_rating"].iloc[-1] - rated["user_rating"].iloc[0])
+        if len(rated) >= 2
+        else 0
+    )
 
-    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Games", len(df), border=True)
-    c2.metric("Win-rate", f"{win_rate:.0%}", border=True)
-    c3.metric("Draw-rate", f"{draw_rate:.0%}", border=True)
-    c4.metric("Loss-rate", f"{loss_rate:.0%}", border=True)
-    c5.metric("Opponent Elo (Avg)", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—", border=True)
-    c6.metric("Rating Improvement", f"{rated_delta:+.0f}", border=True)
+    c2.metric("Win rate", f"{win_rate:.0%}", border=True)
+    c3.metric("Draw rate", f"{draw_rate:.0%}", border=True)
+    c4.metric("Loss rate", f"{loss_rate:.0%}", border=True)
+    c5.metric(
+        "⌀ Elo Opp", f"{avg_opp:.0f}" if np.isfinite(avg_opp) else "—", border=True
+    )
+    c6.metric("⌀ Elo Delta", f"{rated_delta:+.0f}", border=True)
+
 
 def show_opening_kpis(label: str, data):
     if data is None:
@@ -118,12 +151,22 @@ def show_opening_kpis(label: str, data):
         return
 
     def get_metric(row, best_or_worst: Literal["Best", "Worst"]):
+        st.markdown(
+            """
+        <style>
+        [data-testid="stMetricValue"] {
+            font-size: 1.5rem !important; /* default is ~2.5rem */
+        }
+        </style>
+        """,
+            unsafe_allow_html=True,
+        )
         return st.metric(
             width="stretch",
             label=f"{best_or_worst} Opening for {label} ({row.games} games and {row.win_rate*100:.1f}% win-rate)",
             value=f"{row.opening_name}",
             help=f"With a minimum of 20/10/1 games depending on availability (# games: {row.games})",
-            border=True
+            border=True,
         )
 
     best, worst = data
@@ -136,7 +179,8 @@ def show_opening_kpis(label: str, data):
 
 def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
     if df.empty:
-        st.info(f"No games in this selection ({tab_name})."); return
+        st.info(f"No games in this selection ({tab_name}).")
+        return
 
     _kpi(df)
 
@@ -151,10 +195,11 @@ def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
     else:
         st.altair_chart(chart, use_container_width=True)
 
-df = load_validate_df()
+
+df = load_validate_games()
 df = add_header_with_slider(df, "Dashboard")
 
-#--- Layout
+# --- Layout
 top_labels, classes = get_time_control_tabs(df)
 top_tabs = st.tabs(top_labels)
 with top_tabs[0]:
