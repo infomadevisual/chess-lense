@@ -6,9 +6,11 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from services.duckdb_dao import get_kpis
 from utils.data_processor import counts_by_opening
+from utils.session import get_available_filters
 from utils.ui import (
-    add_header_with_slider,
+    build_filters,
     get_time_control_tabs,
     load_validate_games,
     setup_global_page,
@@ -196,20 +198,42 @@ def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
         st.altair_chart(chart, use_container_width=True)
 
 
-df = load_validate_games()
-df = add_header_with_slider(df, "Dashboard")
+con, view = load_validate_games()
 
-# --- Layout
-top_labels, classes = get_time_control_tabs(df)
-top_tabs = st.tabs(top_labels)
-with top_tabs[0]:
-    _render_viz(df, "All", multi=True)
+current_filters = build_filters()
+print(current_filters)
 
-for i, cls in enumerate(classes, start=1):
-    with top_tabs[i]:
-        scope = df[df["time_class"].str.lower().fillna("unknown") == cls]
-        if scope.empty:
-            st.info(f"No games in {cls.title()}.")
-            continue
-        filtered = time_filter_controls(scope, key_prefix=f"tc_{cls}")
-        _render_viz(filtered, tab_name=cls.title(), multi=False)
+# KPIs
+summary = get_kpis(con, view, current_filters)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1.metric("Games", summary.total, border=True)
+c2.metric("Win rate", f"{summary.win_rate:.0%}", border=True)
+c3.metric("Draw rate", f"{summary.draw_rate:.0%}", border=True)
+c4.metric("Loss rate", f"{summary.loss_rate:.0%}", border=True)
+c5.metric(
+    "⌀ Elo Opp",
+    (
+        f"{summary.avg_opponent_rating:.0f}"
+        if summary.avg_opponent_rating is not None
+        else "—"
+    ),
+    border=True,
+)
+c6.metric("⌀ Elo Delta", f"{summary.rated_delta:+.0f}", border=True)
+
+# df = add_header_with_slider(con, view, "Dashboard")
+
+# # --- Layout
+# top_labels, classes = get_time_control_tabs(df)
+# top_tabs = st.tabs(top_labels)
+# with top_tabs[0]:
+#     _render_viz(df, "All", multi=True)
+
+# for i, cls in enumerate(classes, start=1):
+#     with top_tabs[i]:
+#         scope = df[df["time_class"].str.lower().fillna("unknown") == cls]
+#         if scope.empty:
+#             st.info(f"No games in {cls.title()}.")
+#             continue
+#         filtered = time_filter_controls(scope, key_prefix=f"tc_{cls}")
+#         _render_viz(filtered, tab_name=cls.title(), multi=False)

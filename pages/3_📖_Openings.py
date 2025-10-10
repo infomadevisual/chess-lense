@@ -111,7 +111,7 @@ def _get_radio_option(key_prefix: str):
 
 
 # ---- Load Data and Apply filters ----
-df = load_validate_games()
+load_validate_games()
 df = add_header_with_slider(df, "📖 Openings Analysis")
 
 # --- Layout

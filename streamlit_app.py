@@ -1,8 +1,12 @@
+import duckdb
 import streamlit as st
 
-from utils.session import init_app
+from utils.session import init_session
 
-init_app()
+duckdb.install_extension("icu")
+duckdb.load_extension("icu")
+
+init_session()
 
 pg = st.navigation(
     [

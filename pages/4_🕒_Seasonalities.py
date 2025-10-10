@@ -179,7 +179,7 @@ def _render_viz(df: pd.DataFrame):
 
 
 # ---- Load Data and Apply filters ----
-df = load_validate_games()
+load_validate_games()
 df = add_header_with_slider(df, "🕒 Seasonality Analysis")
 
 # --- Layout

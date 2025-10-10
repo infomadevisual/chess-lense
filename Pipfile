@@ -8,6 +8,7 @@ pydantic = "*"
 pytz = "*"
 streamlit-javascript = "*"
 python-chess = "*"
+duckdb = "*"
 
 [dev-packages]
 notebook = "*"

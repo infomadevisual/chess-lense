@@ -2,36 +2,25 @@ from typing import Literal, Tuple
 
 import pandas as pd
 import streamlit as st
+from duckdb import DuckDBPyConnection
 
-from services.services import get_data_manager
+from services.duckdb_dao import count_rows, create_user_view
+from services.services import get_data_manager, get_duckdb
 from utils.session import (
-    ensure_app_initialized,
+    CurrentFilters,
+    ensure_session_initialized,
+    get_available_filters,
     get_session_username,
     get_session_username_normalized,
 )
 
 
-def toast_once_page(page_id: str, key: str, text: str, icon: str = "ℹ️"):
-    """Show once per page visit regardless of identical text."""
-    v_key = f"__visit::{page_id}"
-    reg_key = f"__toast_shown::{page_id}"
-    visit = st.session_state.get(v_key, 0)
-    reg = st.session_state.setdefault(reg_key, {})
-    if reg.get(key) != visit:
-        st.toast(text, icon=icon)
-        reg[key] = visit
+def setup_global_page(page_name: str, layout: Literal["wide", "centered"] = "wide"):
+    ensure_session_initialized()
 
-
-def _set_active_page(page_id: str):
-    """Call at top of each page. Increments visit when you enter the page."""
-    ap_key = "__active_page"
-    v_key = f"__visit::{page_id}"
-    if st.session_state.get(ap_key) != page_id:
-        st.session_state[ap_key] = page_id
-        st.session_state[v_key] = st.session_state.get(v_key, 0) + 1
-
-
-def _inject_global_page_styles():
+    st.set_page_config(
+        page_title=f"ChessLense - {page_name}", page_icon="♟️", layout=layout
+    )
     st.markdown(
         """
         <style>
@@ -49,18 +38,25 @@ def _inject_global_page_styles():
         unsafe_allow_html=True,
     )
 
-
-def setup_global_page(page_name: str, layout: Literal["wide", "centered"] = "wide"):
-    ensure_app_initialized()
-
-    st.set_page_config(
-        page_title=f"ChessLense - {page_name}", page_icon="♟️", layout=layout
-    )
-    _inject_global_page_styles()
-    _set_active_page(page_name)
+    ap_key = "__active_page"
+    v_key = f"__visit::{page_name}"
+    if st.session_state.get(ap_key) != page_name:
+        st.session_state[ap_key] = page_name
+        st.session_state[v_key] = st.session_state.get(v_key, 0) + 1
 
 
-def load_validate_games(progress_cb=None) -> pd.DataFrame:
+def toast_once_page(page_id: str, key: str, text: str, icon: str = "ℹ️"):
+    """Show once per page visit regardless of identical text."""
+    v_key = f"__visit::{page_id}"
+    reg_key = f"__toast_shown::{page_id}"
+    visit = st.session_state.get(v_key, 0)
+    reg = st.session_state.setdefault(reg_key, {})
+    if reg.get(key) != visit:
+        st.toast(text, icon=icon)
+        reg[key] = visit
+
+
+def load_validate_games() -> tuple[DuckDBPyConnection, str]:
     username = get_session_username()
     if username is None:
         st.warning(
@@ -68,25 +64,20 @@ def load_validate_games(progress_cb=None) -> pd.DataFrame:
         )
         st.stop()
 
-    tz = st.context.timezone
-    if tz == None:
-        st.warning("Timezone couldn't be detected, using UTC")
-        tz = "UTC"
-
-    normalized_user = get_session_username_normalized()
-    if normalized_user is None:
-        st.warning(
-            "No user provided. Go to 📥Load Games and load games of a user first."
-        )
-        st.stop()
-
-    df = get_data_manager().load_games(normalized_user, tz, progress_cb)
-
-    if df is None or df.empty:
+    username_n = get_session_username_normalized()
+    tz = st.context.timezone or "UTC"  # TODO: changes this from selection box
+    path_to_games = get_data_manager().get_games_path(username_n)
+    con, view = create_user_view(username_n, path_to_games, tz)
+    if not view:
         st.warning("No games loaded. Go to 📥Load Games and load your games first.")
         st.stop()
 
-    return df.copy()
+    n = count_rows(con, view)
+    if n == 0:
+        st.warning("No games loaded. Go to 📥Load Games and load your games first.")
+        st.stop()
+
+    return con, view
 
 
 def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
@@ -116,13 +107,44 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
     return df_scope[mask]
 
 
-def add_header_with_slider(df_scope: pd.DataFrame, header_title: str) -> pd.DataFrame:
-    hdr_left, hdr_right = st.columns([1, 1])
-    with hdr_left:
-        st.header(header_title)
-    with hdr_right:
-        df_scope = _apply_rated_filter(df_scope, key_prefix="hdr")
-        return _add_year_slider(df_scope)
+# def add_header_with_slider(df_scope: pd.DataFrame, header_title: str) -> pd.DataFrame:
+#     hdr_left, hdr_right = st.columns([1, 1])
+#     with hdr_left:
+#         st.header(header_title)
+#     with hdr_right:
+#         df_scope = _apply_rated_filter(df_scope, key_prefix="hdr")
+#         return _add_year_slider(df_scope)
+
+
+def build_filters() -> CurrentFilters:
+    available_filters = get_available_filters()
+    if available_filters is None:
+        st.warning(
+            "No filters available. Something is really off. Please try to load data again."
+        )
+        st.stop()
+
+    st.markdown(
+        """
+        <style>
+        div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) { padding-top: 3rem; }
+        </style>
+    """,
+        unsafe_allow_html=True,
+    )
+    start_lbl, end_lbl = st.select_slider(
+        "Range",
+        options=available_filters.months,
+        value=(available_filters.months[0], available_filters.months[-1]),
+        key="month_slider",
+        label_visibility="collapsed",
+    )
+    return CurrentFilters(
+        month_start=start_lbl,
+        month_end=end_lbl,
+        time_class="blitz",  # TODO:
+        rated_only=True,  # TODO:
+    )
 
 
 def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
@@ -136,9 +158,7 @@ def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
     )
 
     # parse times
-    s_local = pd.to_datetime(df_scope["end_time_local"], errors="coerce").dt.tz_convert(
-        None
-    )
+    s_local = pd.to_datetime(df_scope["end_time"], errors="coerce").dt.tz_convert(None)
     if s_local.dropna().empty:
         return df_scope.copy()
 

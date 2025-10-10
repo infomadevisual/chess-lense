@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from duckdb import DuckDBPyConnection
 
 from services.chesscom_downloader import ChesscomDownloader
 from services.file_cache import FileCache
@@ -27,9 +28,10 @@ class DataManager:
     def __init__(self, base_dir: Path = Config.cache_root):
         self.base_dir = base_dir
 
-    def load_games(
-        self, username: str, timezone: str, progress_cb=None
-    ) -> pd.DataFrame:
+    def get_games_path(self, username: str) -> Path:
+        return FileCache(username=username, base_dir=self.base_dir).games_path
+
+    def check_for_updates_and_init(self, username: str, progress_cb=None) -> None:
         downloader = ChesscomDownloader()
 
         # (Re-)Load index
@@ -59,39 +61,32 @@ class DataManager:
                 progress_cb(i, total_archives)
 
         if len(rows) > 0:
-            cache.update_games(rows)
+            df = cache.update_games(rows)
             cache.save_index(idx)
+            self._preprocess_and_save(df, cache)
 
-        return self._load_and_post_process(cache, timezone)
+    def _preprocess_and_save(
+        self, df_raw: pd.DataFrame, cache: FileCache
+    ) -> pd.DataFrame:
+        df = df_raw.copy()
 
-    def _load_and_post_process(self, cache: FileCache, timezone: str) -> pd.DataFrame:
-        df = cache.load_games()
-
-        # ts with timezone column
-        if "end_time" in df.columns:
-            df["end_time_local"] = df["end_time"].dt.tz_convert(timezone)
-
-        # fast PGN parse
-        pgn_rows = [self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str)]
-        pgn_cols = pd.json_normalize(pgn_rows)
-        df = pd.concat([df.drop(columns=["pgn"]), pgn_cols], axis=1)
-
-        # Remove unnecessary columns
-        df.drop(
-            columns=[
-                "moves_normalized",
-                "end_time",
-                "eco_url",
-                "game_url",
-                "tournament_url",
-                "username",
-                "initial_setup_fen",
-            ],
-            inplace=True,
+        # PGN fast summary
+        p = pd.json_normalize(
+            [self._parse_pgn_min_fast(x) for x in df["pgn"].astype(str)]
         )
+        df = pd.concat([df.drop(columns=["pgn"]), p], axis=1)
 
-        # openings
-        df = join_openings_to_games(df)
+        # drop unused
+        drop_cols = [
+            "eco_url",
+            "game_url",
+            "tournament_url",
+            "username",
+            "initial_setup_fen",
+            "moves_normalized",
+        ]
+        df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
+        cache.save_games(df)
         return df
 
     def _fast_san_from_pgn(self, pgn_text: str) -> list[str]:

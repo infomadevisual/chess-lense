@@ -46,13 +46,14 @@ class FileCache:
         return self.user_folder / "index.json"
 
     @property
+    def raw_path(self) -> Path:
+        return self.user_folder / "raw.parquet"
+
+    @property
     def games_path(self) -> Path:
         return self.user_folder / "games.parquet"
 
     def load_index(self) -> IndexModel | None:
-        print(self.cache_root, self.normalized_username)
-        print(self.index_path)
-
         if not self.index_path.exists():
             return None
         try:
@@ -67,7 +68,7 @@ class FileCache:
         self.user_folder.mkdir(parents=True, exist_ok=True)
         self.index_path.write_text(idx.model_dump_json(indent=2), encoding="utf-8")
 
-    def update_games(self, games_rows: list[GameRow]):
+    def update_games(self, games_rows: list[GameRow]) -> pd.DataFrame:
         # Build dataframe of updated games
         new_df = (
             pd.DataFrame([r.model_dump() for r in games_rows])
@@ -80,7 +81,7 @@ class FileCache:
                 new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
 
         # Merge with existing parquet
-        existing = self._read_parquet(self.games_path)
+        existing = self._read_parquet(self.raw_path)
 
         if existing is None:
             df_final = new_df
@@ -115,7 +116,9 @@ class FileCache:
         # Persist Parquet & Index
         self.user_folder.mkdir(parents=True, exist_ok=True)
         if df_final is not None and not df_final.empty:
-            df_final.to_parquet(self.games_path, index=False)
+            df_final.to_parquet(self.raw_path, index=False)
+
+        return df_final
 
     def load_games(self) -> pd.DataFrame:
         df = self._read_parquet(self.games_path)
@@ -123,6 +126,10 @@ class FileCache:
             return pd.DataFrame()
 
         return df
+
+    def save_games(self, df: pd.DataFrame):
+        self.user_folder.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(self.games_path, index=False)
 
     def _read_parquet(self, p: Path) -> Optional[pd.DataFrame]:
         if p.exists():

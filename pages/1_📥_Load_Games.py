@@ -2,14 +2,26 @@
 
 import logging
 
+import pandas as pd
 import streamlit as st
 
+from services.duckdb_dao import (
+    count_rows,
+    create_user_view,
+    get_distinct_rated,
+    get_distinct_time_class,
+    min_max_months_from_end_time,
+    sample_preview,
+)
+from services.services import get_data_manager
 from utils.session import (
+    FilterOptionsAvailable,
     get_session_username,
     get_session_username_normalized,
+    set_available_filters,
     set_session_username,
 )
-from utils.ui import load_validate_games, setup_global_page
+from utils.ui import setup_global_page
 
 # ---------- Page config must be first ----------
 setup_global_page("📥 Load games", "centered")
@@ -75,6 +87,8 @@ if submit:
 
     set_session_username(username_input)
     username = get_session_username()
+    username_n = get_session_username_normalized()
+    data_manager = get_data_manager()
 
     with st.spinner("Loading games..."):
         prog = st.progress(0.0, text="Initializing download")
@@ -83,39 +97,46 @@ if submit:
             frac = 0.0 if total == 0 else i / total
             prog.progress(frac, text=f"{i}/{total} months loaded")
 
-        normalized = get_session_username_normalized()
-        df = load_validate_games(progress_cb=update_progress)
+        data_manager.check_for_updates_and_init(username_n, update_progress)
 
     prog.empty()
 
-    if df.empty:
+    tz = st.context.timezone or "UTC"
+    con, view = create_user_view(
+        username_n, data_manager.get_games_path(username_n), tz
+    )
+
+    # Build available Filter options
+    # Slider
+    min_m, max_m = min_max_months_from_end_time(con, view)
+    min_pd = pd.to_datetime(min_m)
+    max_pd = pd.to_datetime(max_m)
+
+    # build continuous month sequence
+    months = pd.period_range(start=min_m, end=max_m, freq="M")
+    labels = months.strftime("%Y-%m").tolist()
+
+    # Rated Only
+    rated_vals = get_distinct_rated(con, view)
+
+    time_class = get_distinct_time_class(con, view)
+    time_class = ["All"] + time_class
+    order = ["All", "bullet", "blitz", "rapid", "daily"]
+    time_class = [x for x in order if x in time_class]
+
+    set_available_filters(
+        FilterOptionsAvailable(months=labels, rated=rated_vals, time_class=time_class)
+    )
+
+    games_count = count_rows(con, view)
+    if games_count == 0:
         st.warning("No games found.")
     else:
-        st.success(f"{len(df)} games loaded from {username}.")
+        st.success(f"{games_count} games loaded from {username}.")
 
         if st.button("Go to 📊 Dashboard", type="primary", key="go_dash"):
             st.switch_page(DASHBOARD_PAGE_PATH)
 
         with st.expander("Summary", expanded=True):
-            st.write(f"User: **{username}** | Games: **{len(df)}**")
-
-            cols = [
-                "end_time_local",
-                "username",
-                "opponent_username",
-                "user_played_as",
-                "user_result",
-                "opponent_result",
-                "user_rating",
-                "opponent_rating",
-                "rated",
-                "rules",
-                "time_class",
-                "time_control",
-            ]
-            cols = [c for c in cols if c in df.columns]
-
-            try:
-                st.dataframe(df.sample(min(10, len(df)))[cols] if len(df) else df[cols])
-            except Exception:
-                st.dataframe(df.head(10)[cols])
+            st.write(f"User: **{username}** | Games: **{games_count}**")
+            st.dataframe(sample_preview(con, view))
