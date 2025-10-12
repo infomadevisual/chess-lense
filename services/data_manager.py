@@ -38,31 +38,41 @@ class DataManager:
         cache = FileCache(username=username, base_dir=self.base_dir)
         idx = cache.load_index()
         if idx is None or idx.archives_list.is_update_needed():
+            logger.info(f"{username}: Loading Index...")
             idx = downloader.download_index(username)
             cache.save_index(idx)
+        else:
+            logger.info(f"{username}: Index is younger than 24 hours. No Update.")
 
         # Iterate over each archive and check whether it needs update (only updated every 24 hours with etag)
         rows: list[GameRow] = []
-        total_archives = len(idx.archives)
+        progress_bar_len = len(idx.archives) + 2
         for i, archive_idx in enumerate(idx.archives, start=1):
             if not archive_idx.is_update_needed():
-                logger.info(f"Skipping as no updated needed: {archive_idx.url}")
+                logger.info(
+                    f"{username}: Skipping as no updated needed: {archive_idx.url}"
+                )
                 continue
 
-            games_rows = downloader.download_archive(archive_idx, username)
+            games_rows = downloader.download_archive(archive_idx)
             if games_rows is None:
-                logger.warning(f"GameRows None for: {archive_idx.url}")
+                logger.warning(f"{username}: GameRows None for: {archive_idx.url}")
                 continue
 
             rows.extend(GameRow.from_game(g, username) for g in games_rows)
 
             archive_idx.updated_on = datetime.now().isoformat()
             if progress_cb:
-                progress_cb(i, total_archives)
+                progress_cb(i, progress_bar_len)
 
         if len(rows) > 0:
+            if progress_cb:
+                progress_cb(progress_bar_len - 1, progress_bar_len)
             df = cache.update_games(rows)
             cache.save_index(idx)
+
+            if progress_cb:
+                progress_cb(progress_bar_len, progress_bar_len)
             self._preprocess_and_save(df, cache)
 
     def _preprocess_and_save(

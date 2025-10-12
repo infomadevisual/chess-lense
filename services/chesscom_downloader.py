@@ -32,38 +32,36 @@ class ChesscomDownloader:
 
         idx = IndexModel(archives_list=IndexEntry(url=archives_url))
         # Reload archive list if older than 24 hours
-        if idx.archives_list.is_update_needed():
-            headers = dict(self.base_headers)
-            if idx.archives_list.etag:
-                headers["If-None-Match"] = idx.archives_list.etag
+        headers = dict(self.base_headers)
+        if idx.archives_list.etag:
+            headers["If-None-Match"] = idx.archives_list.etag
 
-            try:
-                r = self.sess.get(archives_url, headers=headers, timeout=self.timeout)
-                if r.status_code == 200:
-                    urls = r.json().get("archives", [])
-                    prev = {a.url: a for a in idx.archives}
-                    idx.archives = []
-                    for u in urls:
-                        e = prev.get(u, IndexEntry(url=u))
-                        idx.archives.append(e)
-                    idx.archives_list.etag = r.headers.get("ETag")
-                    idx.archives_list.updated_on = datetime.now().isoformat()
-                    logger.info(f"200 - archives downloaded for {username}")
+        try:
+            r = self.sess.get(archives_url, headers=headers, timeout=self.timeout)
+            if r.status_code == 200:
+                urls = r.json().get("archives", [])
+                prev = {a.url: a for a in idx.archives}
+                idx.archives = []
+                for u in urls:
+                    e = prev.get(u, IndexEntry(url=u))
+                    idx.archives.append(e)
+                idx.archives_list.etag = r.headers.get("ETag")
+                idx.archives_list.updated_on = datetime.now().isoformat()
+                logger.info(f"{username}: 200 - archives downloaded")
 
-                if r.status_code == 304:
-                    logger.info(f"304 - archives not modified for {username}")
-                    idx.archives_list.updated_on = datetime.now().isoformat()
-                if r.status_code == 404:
-                    logger.warning(f"404 - user not found: {username}")
+            if r.status_code == 304:
+                logger.info(f"{username}: 304 - archives not modified")
+                idx.archives_list.updated_on = datetime.now().isoformat()
+            if r.status_code == 404:
+                logger.warning(f"{username}: 404 - user not found")
 
-            except requests.RequestException as e:
-                logger.exception(f"archives error: {e}")
+        except requests.RequestException as e:
+            logger.exception(f"{username}: archives error: {e}")
+            raise e
 
         return idx
 
-    def download_archive(
-        self, idx: IndexEntry, username: str
-    ) -> list[GameModel] | None:
+    def download_archive(self, idx: IndexEntry) -> list[GameModel] | None:
         data = self._fetch_conditional_json(idx)
         if data is None:
             return None

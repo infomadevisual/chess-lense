@@ -94,8 +94,19 @@ if submit:
         prog = st.progress(0.0, text="Initializing download")
 
         def update_progress(i, total):
+            num_months = total - 2
+            cache_step = total - 1
             frac = 0.0 if total == 0 else i / total
-            prog.progress(frac, text=f"{i}/{total} months loaded")
+
+            if i <= num_months:
+                text = f"Loading {i}/{num_months} months..."
+            elif i == cache_step:
+                text = "Updating local cache..."
+            else:
+                text = "Preprocessing and saving games..."
+
+            logger.info(text)
+            prog.progress(frac, text)
 
         data_manager.check_for_updates_and_init(username_n, update_progress)
 
