@@ -9,7 +9,6 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from utils.models import GameRow
-from utils.openings_catalog import join_openings_to_games
 
 logger = logging.getLogger("FileCache")
 
@@ -68,7 +67,7 @@ class FileCache:
         self.user_folder.mkdir(parents=True, exist_ok=True)
         self.index_path.write_text(idx.model_dump_json(indent=2), encoding="utf-8")
 
-    def update_games(self, games_rows: list[GameRow]) -> pd.DataFrame:
+    def update_games_raw(self, games_rows: list[GameRow]):
         # Build dataframe of updated games
         new_df = (
             pd.DataFrame([r.model_dump() for r in games_rows])
@@ -131,13 +130,16 @@ class FileCache:
         if df_final is not None and not df_final.empty:
             df_final.to_parquet(self.raw_path, index=False)
 
-        return df_final
-
     def load_games(self) -> pd.DataFrame:
         df = self._read_parquet(self.games_path)
         if df is None or df.empty:
-            return pd.DataFrame()
+            raise ValueError("No games data available in cache")
+        return df
 
+    def load_games_raw(self) -> pd.DataFrame:
+        df = self._read_parquet(self.raw_path)
+        if df is None or df.empty:
+            raise ValueError("No raw games data available in cache")
         return df
 
     def save_games(self, df: pd.DataFrame):

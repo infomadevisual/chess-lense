@@ -10,6 +10,7 @@ import streamlit as st
 from duckdb import DuckDBPyConnection
 from pydantic import BaseModel
 
+from data.openings_preprocessor import OPENINGS_PATH_PREPROCESSED
 from utils.session import CurrentFilters, FilterOptionsAvailable, TimeClassGamesCount
 
 
@@ -43,12 +44,12 @@ def short_hash(s: str, length: int = 8) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:length]
 
 
-def create_openings_view(openings_path: str):
+def create_openings_view():
     con = get_duckdb()
     con.execute(
         f"""
         CREATE OR REPLACE VIEW openings AS
-        SELECT * FROM parquet_scan('{openings_path}');
+        SELECT * FROM parquet_scan('{OPENINGS_PATH_PREPROCESSED}');
     """
     )
 

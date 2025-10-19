@@ -221,20 +221,3 @@ logger.info(f"Current Filters: {current_filters}")
 # KPIs
 available_filters = get_available_filters()
 render_kpi_cards(get_kpis(view, current_filters, available_filters))
-
-# df = add_header_with_slider(con, view, "Dashboard")
-
-# # --- Layout
-# top_labels, classes = get_time_control_tabs(df)
-# top_tabs = st.tabs(top_labels)
-# with top_tabs[0]:
-#     _render_viz(df, "All", multi=True)
-
-# for i, cls in enumerate(classes, start=1):
-#     with top_tabs[i]:
-#         scope = df[df["time_class"].str.lower().fillna("unknown") == cls]
-#         if scope.empty:
-#             st.info(f"No games in {cls.title()}.")
-#             continue
-#         filtered = time_filter_controls(scope, key_prefix=f"tc_{cls}")
-#         _render_viz(filtered, tab_name=cls.title(), multi=False)

@@ -5,8 +5,7 @@ from datetime import datetime
 import requests
 
 from services.file_cache import IndexEntry, IndexModel
-from utils.models import GameModel, GameRow, MonthArchive
-from utils.openings_catalog import join_openings_to_games
+from utils.models import GameModel, MonthArchive
 
 logger = logging.getLogger("chesscom")
 

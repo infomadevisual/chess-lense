@@ -3,6 +3,8 @@ import logging
 import duckdb
 import streamlit as st
 
+from data.openings_preprocessor import preprocess_openings
+from services.duckdb_dao import create_openings_view
 from utils.session import init_session
 
 duckdb.install_extension("icu")
@@ -15,6 +17,10 @@ logging.basicConfig(
 )
 
 init_session()
+
+# Ensure openings exist and view is created
+preprocess_openings()
+create_openings_view()
 
 pg = st.navigation(
     [
