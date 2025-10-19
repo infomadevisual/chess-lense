@@ -3,8 +3,6 @@ import pandas as pd
 import streamlit as st
 
 from utils.ui import (
-    add_header_with_slider,
-    get_time_control_tabs,
     load_validate_games,
     setup_global_page,
     time_filter_controls,

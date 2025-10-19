@@ -1,3 +1,5 @@
+import logging
+
 import duckdb
 import streamlit as st
 
@@ -5,6 +7,12 @@ from utils.session import init_session
 
 duckdb.install_extension("icu")
 duckdb.load_extension("icu")
+
+# Configure logging once
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 init_session()
 

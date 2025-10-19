@@ -5,9 +5,11 @@ import streamlit as st
 from duckdb import DuckDBPyConnection
 
 from services.duckdb_dao import count_rows, create_user_view
-from services.services import get_data_manager, get_duckdb
+from services.services import get_data_manager
 from utils.session import (
     CurrentFilters,
+    TimeClass,
+    TimeClassGamesCount,
     ensure_session_initialized,
     get_available_filters,
     get_session_username,
@@ -56,7 +58,7 @@ def toast_once_page(page_id: str, key: str, text: str, icon: str = "ℹ️"):
         reg[key] = visit
 
 
-def load_validate_games() -> tuple[DuckDBPyConnection, str]:
+def load_validate_games() -> str:
     username = get_session_username()
     if username is None:
         st.warning(
@@ -67,17 +69,17 @@ def load_validate_games() -> tuple[DuckDBPyConnection, str]:
     username_n = get_session_username_normalized()
     tz = st.context.timezone or "UTC"  # TODO: changes this from selection box
     path_to_games = get_data_manager().get_games_path(username_n)
-    con, view = create_user_view(username_n, path_to_games, tz)
+    view = create_user_view(username_n, path_to_games, tz)
     if not view:
         st.warning("No games loaded. Go to 📥Load Games and load your games first.")
         st.stop()
 
-    n = count_rows(con, view)
+    n = count_rows(view)
     if n == 0:
         st.warning("No games loaded. Go to 📥Load Games and load your games first.")
         st.stop()
 
-    return con, view
+    return view
 
 
 def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
@@ -116,14 +118,7 @@ def time_filter_controls(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFram
 #         return _add_year_slider(df_scope)
 
 
-def build_filters() -> CurrentFilters:
-    available_filters = get_available_filters()
-    if available_filters is None:
-        st.warning(
-            "No filters available. Something is really off. Please try to load data again."
-        )
-        st.stop()
-
+def _build_month_slider(available_months: list[str]) -> tuple[str, str]:
     st.markdown(
         """
         <style>
@@ -134,97 +129,49 @@ def build_filters() -> CurrentFilters:
     )
     start_lbl, end_lbl = st.select_slider(
         "Range",
-        options=available_filters.months,
-        value=(available_filters.months[0], available_filters.months[-1]),
+        options=available_months,
+        value=(available_months[0], available_months[-1]),
         key="month_slider",
         label_visibility="collapsed",
     )
+    return start_lbl, end_lbl
+
+
+def _build_time_class_filter_multi(
+    available_time_classes: list[TimeClassGamesCount],
+) -> tuple[list[TimeClass] | None, bool]:
+
+    selected = []
+    cols = st.columns(len(available_time_classes) + 1)
+
+    for i, tc in enumerate(available_time_classes):
+        with cols[i]:
+            checked = st.checkbox(
+                f"{tc[0].capitalize()} ({tc[1]})", value=True, key=f"time_class_{tc[0]}"
+            )
+        if checked:
+            selected.append(tc[0])
+
+    with cols[-1]:
+        rated_only_checked = st.checkbox(
+            f"Rated Only", value=True, key=f"rated_only_checkbox"
+        )
+
+    if not selected:
+        return (None, rated_only_checked)
+    return (selected, rated_only_checked)
+
+
+def build_filters() -> CurrentFilters:
+    available_filters = get_available_filters()
+    time_class, rated_only = _build_time_class_filter_multi(
+        available_filters.time_classes
+    )
+    start_lbl, end_lbl = _build_month_slider(available_filters.months)
+
     return CurrentFilters(
         month_start=start_lbl,
         month_end=end_lbl,
-        time_class="blitz",  # TODO:
-        rated_only=True,  # TODO:
+        time_classes=time_class,
+        rated_only=rated_only,
     )
-
-
-def _add_year_slider(df_scope: pd.DataFrame) -> pd.DataFrame:
-    st.markdown(
-        """
-    <style>
-    div[data-testid="column"]:has(div[data-testid="stSelectSlider"]) { padding-top: 3rem; }
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    # parse times
-    s_local = pd.to_datetime(df_scope["end_time"], errors="coerce").dt.tz_convert(None)
-    if s_local.dropna().empty:
-        return df_scope.copy()
-
-    min_p, max_p = s_local.min().to_period("M"), s_local.max().to_period("M")
-    months: list[pd.Period] = []
-    cur = min_p
-    while cur <= max_p:
-        months.append(cur)
-        cur += 1
-
-    labels = [p.strftime("%Y-%m") for p in months]
-    end_idx = len(labels) - 1
-
-    # timestamps for filtering
-    t = pd.to_datetime(df_scope["end_time"], errors="coerce", utc=True)
-
-    def _count(si: int, ei: int) -> int:
-        start_ts = months[si].to_timestamp(how="start").tz_localize("UTC")
-        end_ts = (months[ei] + 1).to_timestamp(how="start").tz_localize("UTC")
-        mask = (t >= start_ts) & (t < end_ts)
-        return int(mask.sum())
-
-    # start with latest 12 months, then widen by 12 until >=1000 games or full range
-    start_idx = max(0, end_idx - 11)
-    while _count(start_idx, end_idx) < 1000 and start_idx > 0:
-        start_idx = max(0, start_idx - 12)
-
-    default_range = (labels[start_idx], labels[end_idx])
-
-    start_lbl, end_lbl = st.select_slider(
-        "Range",
-        options=labels,
-        value=default_range,
-        key="month_slider",
-        label_visibility="collapsed",
-    )
-
-    start_p, end_p = pd.Period(start_lbl, "M"), pd.Period(end_lbl, "M")
-    start_ts = start_p.to_timestamp(how="start").tz_localize("UTC")
-    end_ts = (end_p + 1).to_timestamp(how="start").tz_localize("UTC")
-    return df_scope[(t >= start_ts) & (t < end_ts)].copy()
-
-
-def _order_classes(classes):
-    order = ["bullet", "blitz", "rapid", "daily", "classical"]
-    lower = [c.lower() if isinstance(c, str) else "unknown" for c in classes]
-    seen = set()
-    ordered = [c for c in order if c in lower and not (c in seen or seen.add(c))]
-    rest = [c for c in lower if c not in seen]
-    return ordered + sorted(rest)
-
-
-def get_time_control_tabs(df: pd.DataFrame) -> Tuple[list[str], list[str]]:
-    total_n = len(df)
-    class_counts = df["time_class"].fillna("unknown").str.lower().value_counts()
-    classes = _order_classes(class_counts.index.tolist())
-    top_labels = [f"All ({total_n})"] + [
-        f"{c.title()} ({int(class_counts.get(c, 0))})" for c in classes
-    ]
-    return (top_labels, classes)
-
-
-def _apply_rated_filter(df_scope: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
-    if "rated" not in df_scope.columns:
-        return df_scope
-    only_rated = st.checkbox(
-        "Rated Games only", value=True, key=f"{key_prefix}__rated_only"
-    )
-    return df_scope[df_scope["rated"] == True] if only_rated else df_scope

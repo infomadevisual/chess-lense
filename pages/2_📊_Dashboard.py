@@ -10,13 +10,7 @@ import streamlit as st
 from services.duckdb_dao import KpiSummary, get_kpis
 from utils.data_processor import counts_by_opening
 from utils.session import get_available_filters
-from utils.ui import (
-    build_filters,
-    get_time_control_tabs,
-    load_validate_games,
-    setup_global_page,
-    time_filter_controls,
-)
+from utils.ui import build_filters, load_validate_games, setup_global_page
 
 setup_global_page("📊 Dashboard")
 
@@ -219,13 +213,14 @@ def render_kpi_cards(summary: KpiSummary):
     c6.metric("⌀ Elo Delta", f"{summary.rated_delta:+.0f}", border=True)
 
 
-con, view = load_validate_games()
+view = load_validate_games()
 
 current_filters = build_filters()
 logger.info(f"Current Filters: {current_filters}")
 
 # KPIs
-render_kpi_cards(get_kpis(con, view, current_filters))
+available_filters = get_available_filters()
+render_kpi_cards(get_kpis(view, current_filters, available_filters))
 
 # df = add_header_with_slider(con, view, "Dashboard")
 

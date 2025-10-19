@@ -27,9 +27,6 @@ from utils.ui import setup_global_page
 setup_global_page("📥 Load games", "centered")
 
 # ---------- Logging ----------
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-)
 logger = logging.getLogger("load-games")
 
 # ---------- Constants ----------
@@ -113,33 +110,27 @@ if submit:
     prog.empty()
 
     tz = st.context.timezone or "UTC"
-    con, view = create_user_view(
-        username_n, data_manager.get_games_path(username_n), tz
-    )
+    view = create_user_view(username_n, data_manager.get_games_path(username_n), tz)
 
     # Build available Filter options
     # Slider
-    min_m, max_m = min_max_months_from_end_time(con, view)
+    min_m, max_m = min_max_months_from_end_time(view)
     min_pd = pd.to_datetime(min_m)
     max_pd = pd.to_datetime(max_m)
 
     # build continuous month sequence
-    months = pd.period_range(start=min_m, end=max_m, freq="M")
-    labels = months.strftime("%Y-%m").tolist()
-
-    # Rated Only
-    rated_vals = get_distinct_rated(con, view)
-
-    time_class = get_distinct_time_class(con, view)
-    time_class = ["All"] + time_class
-    order = ["All", "bullet", "blitz", "rapid", "daily"]
-    time_class = [x for x in order if x in time_class]
-
+    time_classes = get_distinct_time_class(view)
     set_available_filters(
-        FilterOptionsAvailable(months=labels, rated=rated_vals, time_class=time_class)
+        FilterOptionsAvailable(
+            months=pd.period_range(start=min_m, end=max_m, freq="M")
+            .strftime("%Y-%m")
+            .tolist(),
+            rated=get_distinct_rated(view),
+            time_classes=time_classes,
+        )
     )
 
-    games_count = count_rows(con, view)
+    games_count = count_rows(view)
     if games_count == 0:
         st.warning("No games found.")
     else:
@@ -150,4 +141,4 @@ if submit:
 
         with st.expander("Summary", expanded=True):
             st.write(f"User: **{username}** | Games: **{games_count}**")
-            st.dataframe(sample_preview(con, view))
+            st.dataframe(sample_preview(view))
