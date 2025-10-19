@@ -1,4 +1,5 @@
 # dashboard_checkboxes.py
+import logging
 from typing import Literal, Optional, Tuple
 
 import altair as alt
@@ -6,7 +7,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from services.duckdb_dao import get_kpis
+from services.duckdb_dao import KpiSummary, get_kpis
 from utils.data_processor import counts_by_opening
 from utils.session import get_available_filters
 from utils.ui import (
@@ -18,6 +19,8 @@ from utils.ui import (
 )
 
 setup_global_page("📊 Dashboard")
+
+logger = logging.getLogger("Dashboard")
 
 
 def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
@@ -198,28 +201,31 @@ def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
         st.altair_chart(chart, use_container_width=True)
 
 
+def render_kpi_cards(summary: KpiSummary):
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("Games", summary.total, border=True)
+    c2.metric("Win rate", f"{summary.win_rate:.0%}", border=True)
+    c3.metric("Draw rate", f"{summary.draw_rate:.0%}", border=True)
+    c4.metric("Loss rate", f"{summary.loss_rate:.0%}", border=True)
+    c5.metric(
+        "⌀ Elo Opp",
+        (
+            f"{summary.avg_opponent_rating:.0f}"
+            if summary.avg_opponent_rating is not None
+            else "—"
+        ),
+        border=True,
+    )
+    c6.metric("⌀ Elo Delta", f"{summary.rated_delta:+.0f}", border=True)
+
+
 con, view = load_validate_games()
 
 current_filters = build_filters()
-print(current_filters)
+logger.info(f"Current Filters: {current_filters}")
 
 # KPIs
-summary = get_kpis(con, view, current_filters)
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Games", summary.total, border=True)
-c2.metric("Win rate", f"{summary.win_rate:.0%}", border=True)
-c3.metric("Draw rate", f"{summary.draw_rate:.0%}", border=True)
-c4.metric("Loss rate", f"{summary.loss_rate:.0%}", border=True)
-c5.metric(
-    "⌀ Elo Opp",
-    (
-        f"{summary.avg_opponent_rating:.0f}"
-        if summary.avg_opponent_rating is not None
-        else "—"
-    ),
-    border=True,
-)
-c6.metric("⌀ Elo Delta", f"{summary.rated_delta:+.0f}", border=True)
+render_kpi_cards(get_kpis(con, view, current_filters))
 
 # df = add_header_with_slider(con, view, "Dashboard")
 

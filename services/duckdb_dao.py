@@ -1,6 +1,6 @@
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import pandas as pd
@@ -12,13 +12,20 @@ from services.services import get_duckdb
 from utils.session import CurrentFilters
 
 
-class Summary(BaseModel):
+class KpiSummary(BaseModel):
     total: int
     win_rate: float
     draw_rate: float
     loss_rate: float
     avg_opponent_rating: float | None = None
     rated_delta: int
+
+
+class BestWorstOpening(BaseModel):
+    opening_name: str
+    color: Literal["white", "black"]
+    games: int
+    win_rate: float
 
 
 def short_hash(s: str, length: int = 8) -> str:
@@ -134,8 +141,8 @@ def rating_progress(con: DuckDBPyConnection, view: str, color: str):
     ).fetch_df()
 
 
-def get_kpis(con: DuckDBPyConnection, view: str, filters: CurrentFilters) -> Summary:
-    SQL = """
+def _get_filtered_cte(view: str, filters: CurrentFilters) -> tuple[str, list[Any]]:
+    sql = """
     WITH filtered AS (
     SELECT *
     FROM {view}
@@ -143,34 +150,7 @@ def get_kpis(con: DuckDBPyConnection, view: str, filters: CurrentFilters) -> Sum
         {w_time}
         {w_class}
         {w_rated}
-    ),
-    base AS (
-    SELECT
-        COUNT(*)                            AS total,
-        AVG(opponent_rating)                AS avg_opponent_rating,
-        SUM(user_result_simple = 'win')     AS wins,
-        SUM(user_result_simple = 'draw')    AS draws,
-        SUM(user_result_simple = 'loss')    AS losses
-    FROM filtered
-    ),
-    rated AS (
-    SELECT
-        COUNT(*)                                AS n_rated,
-        arg_min(user_rating, end_time)    AS first_r,
-        arg_max(user_rating, end_time)    AS last_r
-    FROM filtered
-    WHERE rated = TRUE
-    )
-    SELECT
-    base.total,
-    COALESCE(wins::DOUBLE  / NULLIF(base.total, 0), 0) AS win_rate,
-    COALESCE(draws::DOUBLE / NULLIF(base.total, 0), 0) AS draw_rate,
-    COALESCE(losses::DOUBLE/ NULLIF(base.total, 0), 0) AS loss_rate,
-    base.avg_opponent_rating,
-    CASE WHEN rated.n_rated >= 2 THEN last_r - first_r ELSE 0 END AS rated_delta
-    FROM base CROSS JOIN rated;
-    """
-
+    )"""
     w_time, w_class, w_rated = "", "", ""
     params: list[Any] = []
     start = (
@@ -199,12 +179,50 @@ def get_kpis(con: DuckDBPyConnection, view: str, filters: CurrentFilters) -> Sum
     elif filters.rated_only is False:
         w_rated += " AND rated = FALSE"
 
-    q = SQL.format(view=view, w_time=w_time, w_class=w_class, w_rated=w_rated)
-    cur = con.execute(q, params)  # used in both CTEs by position
+    return (
+        sql.format(view=view, w_time=w_time, w_class=w_class, w_rated=w_rated),
+        params,
+    )
 
+
+def get_kpis(con: DuckDBPyConnection, view: str, filters: CurrentFilters) -> KpiSummary:
+    filtered_cte = _get_filtered_cte(view, filters)
+
+    sql = (
+        filtered_cte[0]
+        + """
+    ,
+    base AS (
+    SELECT
+        COUNT(*)                            AS total,
+        AVG(opponent_rating)                AS avg_opponent_rating,
+        SUM(user_result_simple = 'win')     AS wins,
+        SUM(user_result_simple = 'draw')    AS draws,
+        SUM(user_result_simple = 'loss')    AS losses
+    FROM filtered
+    ),
+    rated AS (
+    SELECT
+        COUNT(*)                                AS n_rated,
+        arg_min(user_rating, end_time)    AS first_r,
+        arg_max(user_rating, end_time)    AS last_r
+    FROM filtered
+    WHERE rated = TRUE
+    )
+    SELECT
+    base.total,
+    COALESCE(wins::DOUBLE  / NULLIF(base.total, 0), 0) AS win_rate,
+    COALESCE(draws::DOUBLE / NULLIF(base.total, 0), 0) AS draw_rate,
+    COALESCE(losses::DOUBLE/ NULLIF(base.total, 0), 0) AS loss_rate,
+    base.avg_opponent_rating,
+    CASE WHEN rated.n_rated >= 2 THEN last_r - first_r ELSE 0 END AS rated_delta
+    FROM base CROSS JOIN rated;
+    """
+    )
+    cur = con.execute(sql, filtered_cte[1])  # used in both CTEs by position
     row = cur.fetchone()
     if not row:
-        return Summary(
+        return KpiSummary(
             total=0,
             win_rate=0.0,
             draw_rate=0.0,
@@ -213,4 +231,15 @@ def get_kpis(con: DuckDBPyConnection, view: str, filters: CurrentFilters) -> Sum
             rated_delta=0,
         )
     cols = [d[0] for d in cur.description]
-    return Summary.model_validate(dict(zip(cols, row)))
+    return KpiSummary.model_validate(dict(zip(cols, row)))
+
+
+def get_best_worst_openings(
+    con: DuckDBPyConnection,
+    view: str,
+    filters: CurrentFilters,
+    color: Literal["white", "black"],
+    top_n: int = 5,
+) -> list[BestWorstOpening]:
+    # TODO:
+    pass

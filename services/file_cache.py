@@ -86,7 +86,7 @@ class FileCache:
         if existing is None:
             df_final = new_df
         elif new_df.empty:
-            df_final = existing
+            df_final = existing  # TODO: refactor to avoid this branch
         else:
             existing["end_time"] = pd.to_datetime(
                 existing["end_time"], utc=True, errors="coerce"
@@ -99,8 +99,21 @@ class FileCache:
                 [existing[keep_mask], new_df], ignore_index=True, copy=False
             )
 
-            # Key mit Fallback, neue Versionen gewinnen
-            key = merged["game_url"].fillna(merged.get("pgn_url"))
+            # If game_url and/or pgn_url exist use as key, else fallback to composite key
+            if "game_url" in merged or "pgn_url" in merged:
+                key = merged["game_url"].combine_first(
+                    merged.get("pgn_url", pd.Series(index=merged.index, dtype=object))
+                )
+            else:
+                key = (
+                    merged["end_time"].astype(str)
+                    + "_"
+                    + merged["white_username"].fillna("")
+                    + "_"
+                    + merged["black_username"].fillna("")
+                )
+
+            # Key with fallback, new versions win
             merged = (
                 merged.assign(
                     __key=key, __is_new=merged.index >= len(existing[keep_mask])
