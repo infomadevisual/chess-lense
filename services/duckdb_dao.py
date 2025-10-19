@@ -25,6 +25,7 @@ class KpiSummary(BaseModel):
 
 class BestWorstOpening(BaseModel):
     opening_name: str
+    kind: Literal["Best", "Worst"]
     color: Literal["white", "black"]
     games: int
     win_rate: float
@@ -247,11 +248,98 @@ def get_kpis(
 
 
 def get_best_worst_openings(
-    con: DuckDBPyConnection,
     view: str,
     filters: CurrentFilters,
-    color: Literal["white", "black"],
-    top_n: int = 5,
+    available_filters: FilterOptionsAvailable,
 ) -> list[BestWorstOpening]:
-    # TODO:
-    pass
+    filtered_cte = _get_filtered_cte(view, filters, available_filters)
+
+    sql = (
+        filtered_cte[0]
+        + f"""
+    , base AS (
+    SELECT
+        lower(user_played_as) AS color,
+        opening_id            AS opening_id,
+        user_result_simple    AS result
+    FROM {view}
+    WHERE user_result_simple IN ('win','draw','loss')
+    ),
+    counts AS (
+    SELECT
+        color, opening_id,
+        count_if(result='win')  AS win,
+        count_if(result='draw') AS draw,
+        count_if(result='loss') AS loss
+    FROM base
+    GROUP BY color, opening_id
+    ),
+    enriched AS (
+    SELECT
+        color, opening_id, win, draw, loss,
+        (win+draw+loss) AS games,
+        CASE WHEN (win+draw+loss)>0
+            THEN win::DOUBLE/(win+draw+loss) ELSE 0 END AS win_rate
+    FROM counts
+    ),
+    min_games_by_color AS (
+    SELECT
+        color,
+        CASE
+        WHEN max(CASE WHEN games>=20 THEN 1 ELSE 0 END)=1 THEN 20
+        WHEN max(CASE WHEN games>=10 THEN 1 ELSE 0 END)=1 THEN 10
+        WHEN max(CASE WHEN games>=10 THEN 1 ELSE 0 END)=1 THEN 5
+        ELSE 0
+        END AS min_games
+    FROM enriched
+    GROUP BY color
+    ),
+    scoped AS (
+    SELECT e.*
+    FROM enriched e
+    JOIN min_games_by_color m USING(color)
+    WHERE e.games >= m.min_games
+    ),
+    ranked AS (
+    SELECT
+        color, opening_id, win, draw, loss, games, win_rate,
+        ROW_NUMBER() OVER (PARTITION BY color ORDER BY win_rate DESC, games DESC) AS r_best,
+        ROW_NUMBER() OVER (PARTITION BY color ORDER BY win_rate ASC,  games DESC) AS r_worst
+    FROM scoped
+    ), best_worst AS (
+        SELECT
+        color,
+        'Best'  AS kind,
+        opening_id, win, draw, loss, games, win_rate
+        FROM ranked
+        WHERE r_best = 1
+        UNION ALL
+        SELECT
+        color,
+        'Worst' AS kind,
+        opening_id, win, draw, loss, games, win_rate
+        FROM ranked
+        WHERE r_worst = 1
+        ORDER BY color, kind
+    )
+    SELECT opening_name, kind, color, games, win_rate FROM best_worst LEFT JOIN openings USING(opening_id);
+    """
+    )
+
+    con = get_duckdb()
+    logger.info("Executing KPI SQL: %s | ARGS: %s", sql, filtered_cte[1])
+    rows = con.execute(sql, filtered_cte[1]).fetchall()
+    return [
+        BestWorstOpening.model_validate(
+            {
+                "opening_name": r[
+                    0
+                ],  # TODO: this is currently the fine grained opening (with variation). Change to broader category if needed.
+                "kind": r[1],
+                "color": r[2],
+                "games": r[3],
+                "win_rate": r[4],
+            }
+        )
+        for r in rows
+    ]

@@ -7,7 +7,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from services.duckdb_dao import KpiSummary, get_kpis
+from services.duckdb_dao import (
+    BestWorstOpening,
+    KpiSummary,
+    get_best_worst_openings,
+    get_kpis,
+)
 from utils.data_processor import counts_by_opening
 from utils.session import get_available_filters
 from utils.ui import build_filters, load_validate_games, setup_global_page
@@ -33,35 +38,35 @@ def _daily_last(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def get_best_worst_openings(
-    counts_df: pd.DataFrame,
-) -> Optional[Tuple[pd.Series, pd.Series]]:
-    if counts_df is None or counts_df.empty:
-        return None
+# def get_best_worst_openings(
+#     counts_df: pd.DataFrame,
+# ) -> Optional[Tuple[pd.Series, pd.Series]]:
+#     if counts_df is None or counts_df.empty:
+#         return None
 
-    df = counts_df.copy()
+#     df = counts_df.copy()
 
-    # Ensure required metrics exist
-    if "games" not in df.columns:
-        df["games"] = df.get("win", 0) + df.get("draw", 0) + df.get("loss", 0)
+#     # Ensure required metrics exist
+#     if "games" not in df.columns:
+#         df["games"] = df.get("win", 0) + df.get("draw", 0) + df.get("loss", 0)
 
-    if "win_rate" not in df.columns:
-        # avoid division by zero
-        denom = df["games"].replace({0: np.nan})
-        df["win_rate"] = df.get("win", 0) / denom
-        df["win_rate"] = df["win_rate"].fillna(0.0)
+#     if "win_rate" not in df.columns:
+#         # avoid division by zero
+#         denom = df["games"].replace({0: np.nan})
+#         df["win_rate"] = df.get("win", 0) / denom
+#         df["win_rate"] = df["win_rate"].fillna(0.0)
 
-    # Filter with fallback
-    scope = df[df["games"] >= 20]
-    if scope.empty:
-        scope = df[df["games"] >= 10]
-    if scope.empty:
-        scope = df
+#     # Filter with fallback
+#     scope = df[df["games"] >= 20]
+#     if scope.empty:
+#         scope = df[df["games"] >= 10]
+#     if scope.empty:
+#         scope = df
 
-    # Pick best and worst
-    best = scope.sort_values(["win_rate", "games"], ascending=[False, False]).iloc[0]
-    worst = scope.sort_values(["win_rate", "games"], ascending=[True, False]).iloc[0]
-    return best, worst
+#     # Pick best and worst
+#     best = scope.sort_values(["win_rate", "games"], ascending=[False, False]).iloc[0]
+#     worst = scope.sort_values(["win_rate", "games"], ascending=[True, False]).iloc[0]
+#     return best, worst
 
 
 def _rating_progress_daily(
@@ -144,55 +149,48 @@ def _kpi(df: pd.DataFrame):
     c6.metric("⌀ Elo Delta", f"{rated_delta:+.0f}", border=True)
 
 
-def show_opening_kpis(label: str, data):
-    if data is None:
-        st.warning(f"No openings as {label}")
+def show_opening_card(data: list[BestWorstOpening]):
+    if len(data) == 0:
+        st.info("No openings in this selection.")
         return
 
-    def get_metric(row, best_or_worst: Literal["Best", "Worst"]):
-        st.markdown(
-            """
-        <style>
-        [data-testid="stMetricValue"] {
-            font-size: 1.5rem !important; /* default is ~2.5rem */
-        }
-        </style>
-        """,
-            unsafe_allow_html=True,
-        )
-        return st.metric(
-            width="stretch",
-            label=f"{best_or_worst} Opening for {label} ({row.games} games and {row.win_rate*100:.1f}% win-rate)",
-            value=f"{row.opening_name}",
-            help=f"With a minimum of 20/10/1 games depending on availability (# games: {row.games})",
-            border=True,
-        )
-
-    best, worst = data
-    c1, c2 = st.columns(2)
-    with c1:
-        get_metric(best, "Best")
-    with c2:
-        get_metric(worst, "Worst")
+    st.markdown(
+        """
+    <style>
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem !important; /* default is ~2.5rem */
+    }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+    dp = data[0]
+    return st.metric(
+        width="stretch",
+        label=f"{dp.kind} Opening for {dp.color} ({dp.games} games and {dp.win_rate*100:.1f}% win-rate)",
+        value=f"{dp.opening_name}",
+        help=f"With a minimum of 20/10/1 games depending on availability (# games: {dp.games})",
+        border=True,
+    )
 
 
-def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
-    if df.empty:
-        st.info(f"No games in this selection ({tab_name}).")
-        return
+# def _render_viz(df: pd.DataFrame, tab_name: str, multi: bool = False):
+#     if df.empty:
+#         st.info(f"No games in this selection ({tab_name}).")
+#         return
 
-    _kpi(df)
+#     _kpi(df)
 
-    w_counts = counts_by_opening(df, "opening_name", "white")
-    b_counts = counts_by_opening(df, "opening_name", "black")
-    show_opening_kpis("White", get_best_worst_openings(w_counts))
-    show_opening_kpis("Black", get_best_worst_openings(b_counts))
+#     w_counts = counts_by_opening(df, "opening_name", "white")
+#     b_counts = counts_by_opening(df, "opening_name", "black")
+#     show_opening_kpis("White", get_best_worst_openings(w_counts))
+#     show_opening_kpis("Black", get_best_worst_openings(b_counts))
 
-    chart = _rating_progress_daily(df, title=f"{tab_name} rating", multi=multi)
-    if chart is None:
-        st.info("No daily points after aggregation.")
-    else:
-        st.altair_chart(chart, use_container_width=True)
+#     chart = _rating_progress_daily(df, title=f"{tab_name} rating", multi=multi)
+#     if chart is None:
+#         st.info("No daily points after aggregation.")
+#     else:
+#         st.altair_chart(chart, use_container_width=True)
 
 
 def render_kpi_cards(summary: KpiSummary):
@@ -221,3 +219,17 @@ logger.info(f"Current Filters: {current_filters}")
 # KPIs
 available_filters = get_available_filters()
 render_kpi_cards(get_kpis(view, current_filters, available_filters))
+
+# Best/Worst Openings
+bw = get_best_worst_openings(view, current_filters, available_filters)
+c1, c2 = st.columns(2)
+with c1:
+    show_opening_card([x for x in bw if x.kind == "Best" and x.color == "white"])
+with c2:
+    show_opening_card([x for x in bw if x.kind == "Worst" and x.color == "white"])
+
+c1, c2 = st.columns(2)
+with c1:
+    show_opening_card([x for x in bw if x.kind == "Best" and x.color == "black"])
+with c2:
+    show_opening_card([x for x in bw if x.kind == "Worst" and x.color == "black"])
